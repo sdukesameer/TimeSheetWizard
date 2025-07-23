@@ -1,5 +1,3 @@
----
-````markdown
 # 🕒 Timesheet Processor
 
 A robust and automated Python-based tool to process employee timesheet data from `.csv` or `.xlsx` files. It integrates with **Monday.com** and **Atlassian Jira** APIs to fetch ticket details, group tasks, and generate a **consolidated report** with enhanced traceability.
