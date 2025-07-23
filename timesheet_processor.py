@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Timesheet Processing Script
-Processes employee timesheet data and generates reports with Monday.com integration
+Timesheet Consolidation Script
+Processes employee timesheet data and generates consolidated reports with Monday.com and Atlassian integration
 """
 
 import pandas as pd
@@ -9,43 +9,61 @@ import requests
 import json
 import re
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 import logging
 from pathlib import Path
 from datetime import datetime
-import pytz
+from collections import defaultdict
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class TimesheetProcessor:
-    def __init__(self, board_id: str = "1693617285"):
+class TimesheetConsolidator:
+    def __init__(self, monday_api_key: str = None, atlassian_config: Dict = None):
         """
-        Initialize the timesheet processor with hardcoded API key
+        Initialize the consolidator with API configurations
 
         Args:
-            board_id: Monday.com board ID (default: 1693617285)
+            monday_api_key: Monday.com API key
+            atlassian_config: Dictionary containing atlassian_domain, atlassian_email, atlassian_api_token
         """
-        self.monday_api_key = "eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjUzNjExODQ2MiwiYWFpIjoxMSwidWlkIjo1NDY2OTMyMiwiaWFkIjoiMjAyNS0wNy0wOFQwNzoyMzo1NC4wMDBaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MTc1NDgxNzksInJnbiI6ImV1YzEifQ.2-NxIoBsSOq6yvaRrXQfSaI0n89uCuxgbNjRmG3nQuo"  # Hardcoded API key
-        self.board_id = board_id
+        # Monday.com API configuration
+        self.monday_api_key = monday_api_key or "YOUR_MONDAY_API_KEY_HERE"
         self.monday_url = "https://api.monday.com/v2"
         self.monday_headers = {
             "Authorization": self.monday_api_key,
             "Content-Type": "application/json"
         }
-        self.monday_items_cache = {}
-        self.included_task_types = {
-            "Development & Unit Testing",
-            "Production Support"
+
+        # Atlassian API configuration
+        self.atlassian_config = atlassian_config or {}
+        self.atlassian_domain = self.atlassian_config.get("domain", "your-domain.atlassian.net")
+        self.atlassian_email = self.atlassian_config.get("email", "your-email@domain.com")
+        self.atlassian_api_token = self.atlassian_config.get("api_token", "YOUR_ATLASSIAN_API_TOKEN_HERE")
+
+        self.atlassian_headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
         }
 
-    def read_timesheet_csv(self, file_path: str) -> pd.DataFrame:
+        # Cache for API responses
+        self.monday_cache = {}
+        self.atlassian_cache = {}
+
+        # Tasks that should not fetch API details
+        self.no_api_tasks = {
+            "Dev Ops Activity",
+            "Deployment",
+            "Meetings & Discussions"
+        }
+
+    def read_timesheet_file(self, file_path: str) -> pd.DataFrame:
         """
-        Read and parse the CloudKaptan timesheet CSV file
+        Read and parse the timesheet file (CSV or XLSX)
 
         Args:
-            file_path: Path to the timesheet CSV file
+            file_path: Path to the timesheet file
 
         Returns:
             DataFrame with parsed timesheet data
@@ -53,26 +71,57 @@ class TimesheetProcessor:
         logger.info(f"Reading timesheet file: {file_path}")
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                lines = file.readlines()
+            file_extension = Path(file_path).suffix.lower()
 
-            header_line_index = None
-            for i, line in enumerate(lines):
-                if "Employee Number" in line and "Employee Name" in line:
-                    header_line_index = i
-                    break
+            if file_extension == '.xlsx':
+                # Skip the first two rows and use row 3 as headers
+                df = pd.read_excel(file_path, engine='openpyxl', skiprows=2)
+            elif file_extension == '.csv':
+                df = pd.read_csv(file_path, encoding='utf-8')
+            else:
+                raise ValueError(f"Unsupported file format: {file_extension}. Use .csv or .xlsx")
 
-            if header_line_index is None:
-                raise ValueError("Could not find header line in CSV")
+            # Log the column names for debugging
+            logger.info(f"Columns found in file: {list(df.columns)}")
 
-            df = pd.read_csv(file_path, skiprows=header_line_index, encoding='utf-8')
-            df = df.dropna(subset=['Employee Number', 'Employee Name', 'Task'])
-            df = df[df['Employee Number'].str.contains('CKE-', na=False)]
+            # Validate required columns
+            required_columns = ['Employee Name', 'Task', 'Total Hours', 'Comments']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+
+            if missing_columns:
+                # Try alternative column names
+                column_mapping = {
+                    'Employee Name': ['Employee Name', 'Name', 'Worker', 'Employee'],
+                    'Task': ['Task', 'Task Type', 'Activity', 'Work Type'],
+                    'Total Hours': ['Total Hours', 'Hours', 'Time Spent', 'Duration'],
+                    'Comments': ['Comments', 'Comment', 'Description', 'Notes']
+                }
+
+                for missing_col in missing_columns:
+                    found = False
+                    for alt_name in column_mapping.get(missing_col, []):
+                        if alt_name in df.columns:
+                            df = df.rename(columns={alt_name: missing_col})
+                            logger.info(f"Renamed column '{alt_name}' to '{missing_col}'")
+                            found = True
+                            break
+                    if not found:
+                        raise ValueError(f"Required column '{missing_col}' not found in file")
+
+            # Filter for billable tasks only
+            if 'Task Billing Type' in df.columns:
+                df = df[df['Task Billing Type'] == 'Billable'].copy()
+            elif 'Billing Type' in df.columns:
+                df = df[df['Billing Type'] == 'Billable'].copy()
+            else:
+                logger.warning("No billing type column found. Processing all records.")
+
+            # Clean data
+            df = df.dropna(subset=['Employee Name', 'Task', 'Total Hours'])
             df['Total Hours'] = pd.to_numeric(df['Total Hours'], errors='coerce').fillna(0)
-            df['Employee Name'] = df['Employee Name'].fillna('No Employee Name')
-            df['Task'] = df['Task'].fillna('No Task')
+            df['Comments'] = df['Comments'].fillna('')
 
-            logger.info(f"Successfully loaded {len(df)} timesheet records")
+            logger.info(f"Successfully loaded {len(df)} billable timesheet records")
             return df
 
         except Exception as e:
@@ -82,32 +131,58 @@ class TimesheetProcessor:
     def extract_monday_ids(self, text: str) -> List[str]:
         """
         Extract Monday.com item IDs from text
-
-        Args:
-            text: Text to search for IDs
-
-        Returns:
-            List of found Monday.com IDs
+        Monday IDs are exactly 10-digit numbers
         """
         if not text or pd.isna(text):
             return []
-        ids = re.findall(r'\b\d{8,}\b', str(text))
+
+        # Find all 10-digit numeric IDs
+        ids = re.findall(r'\b\d{10}\b', str(text))
+
+        # No normalization needed since we're only accepting 10-digit IDs
         return list(set(ids))
+
+    def extract_ops_tickets(self, text: str) -> List[str]:
+        """
+        Extract OPS- ticket IDs from text for Atlassian integration
+        Handles formats like OPS-XXX, OPS - XXX, OPS - XXXX
+        """
+        if not text or pd.isna(text):
+            return []
+
+        # Look for OPS tickets with flexible spacing
+        ops_tickets = re.findall(r'OPS\s*-\s*\d+', str(text), re.IGNORECASE)
+
+        # Normalize to OPS-XXX format
+        normalized_tickets = []
+        for ticket in ops_tickets:
+            normalized = re.sub(r'\s*-\s*', '-', ticket.upper())
+            normalized_tickets.append(normalized)
+
+        return list(set(normalized_tickets))
 
     def fetch_monday_items(self, item_ids: List[str]) -> Dict[str, Dict[str, str]]:
         """
-        Fetch specific items from Monday.com board using GraphQL query
+        Fetch items from Monday.com using GraphQL API
 
         Args:
-            item_ids: List of Monday.com item IDs to fetch
+            item_ids: List of Monday.com item IDs
 
         Returns:
-            Dictionary mapping item ID to item data (name and numbers column value)
+            Dictionary mapping item ID to item details (name, story_point)
         """
-        if not item_ids:
+        if not item_ids or self.monday_api_key == "YOUR_MONDAY_API_KEY_HERE":
+            logger.warning("Monday.com API not configured. Skipping Monday.com integration.")
             return {}
 
         logger.info(f"Fetching Monday.com items: {item_ids}")
+
+        # Check cache first
+        uncached_ids = [id for id in item_ids if id not in self.monday_cache]
+        result = {id: self.monday_cache[id] for id in item_ids if id in self.monday_cache}
+
+        if not uncached_ids:
+            return result
 
         query = """
         query {
@@ -119,7 +194,7 @@ class TimesheetProcessor:
                 }
             }
         }
-        """ % json.dumps(item_ids)
+        """ % json.dumps(uncached_ids)
 
         try:
             response = requests.post(
@@ -133,235 +208,325 @@ class TimesheetProcessor:
             data = response.json()
             if 'errors' in data:
                 logger.error(f"Monday.com API errors: {data['errors']}")
-                return {}
+                return result
 
             items = data.get('data', {}).get('items', [])
-            result = {}
             for item in items:
                 item_id = item['id']
                 item_name = item['name']
-                numbers_value = item.get('column_values', [{}])[0].get('value', '')
-                numbers_value = numbers_value.strip('"') if numbers_value else ''
-                result[item_id] = {'name': item_name, 'numbers': numbers_value}
 
-            logger.info(f"Fetched {len(result)} Monday.com items")
+                # Remove emojis (keep extended ASCII, 0-255)
+                item_name = ''.join(char for char in item_name if ord(char) < 256)
+
+                # Extract story point from numbers column
+                story_point = ''
+                column_values = item.get('column_values', [])
+                if column_values and column_values[0].get('value'):
+                    story_point = column_values[0]['value'].strip('"')
+                    # Remove emojis from story point
+                    story_point = ''.join(char for char in story_point if ord(char) < 256)
+
+                item_data = {
+                    'name': item_name,
+                    'story_point': story_point
+                }
+
+                result[item_id] = item_data
+                self.monday_cache[item_id] = item_data
+
+            logger.info(f"Fetched {len(items)} Monday.com items")
             return result
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching Monday.com items: {e}")
-            return {}
+            return result
         except Exception as e:
             logger.error(f"Unexpected error fetching Monday.com items: {e}")
+            return result
+
+    def fetch_atlassian_tickets(self, ticket_ids: List[str]) -> Dict[str, str]:
+        """
+        Fetch ticket information from Atlassian Jira
+
+        Args:
+            ticket_ids: List of OPS- ticket IDs
+
+        Returns:
+            Dictionary mapping ticket ID to ticket summary
+        """
+        if not ticket_ids or self.atlassian_api_token == "YOUR_ATLASSIAN_API_TOKEN_HERE":
+            logger.warning("Atlassian API not configured. Skipping Atlassian integration.")
             return {}
 
-    def generate_summary_report(self, df: pd.DataFrame) -> pd.DataFrame:
+        logger.info(f"Fetching Atlassian tickets: {ticket_ids}")
+
+        # Check cache first
+        uncached_tickets = [ticket for ticket in ticket_ids if ticket not in self.atlassian_cache]
+        result = {ticket: self.atlassian_cache[ticket] for ticket in ticket_ids if ticket in self.atlassian_cache}
+
+        for ticket_id in uncached_tickets:
+            try:
+                url = f"https://{self.atlassian_domain}/rest/api/3/issue/{ticket_id}"
+
+                response = requests.get(
+                    url,
+                    headers=self.atlassian_headers,
+                    auth=(self.atlassian_email, self.atlassian_api_token),
+                    timeout=30
+                )
+
+                if response.status_code == 200:
+                    issue_data = response.json()
+                    summary = issue_data.get('fields', {}).get('summary', f'Ticket {ticket_id}')
+                    # Remove emojis (keep extended ASCII, 0-255)
+                    summary = ''.join(char for char in summary if ord(char) < 256)
+                    result[ticket_id] = summary
+                    self.atlassian_cache[ticket_id] = summary
+                    logger.info(f"Fetched {ticket_id}: {summary}")
+                elif response.status_code == 404:
+                    logger.warning(f"Ticket {ticket_id} not found")
+                    result[ticket_id] = f"Ticket {ticket_id} (Not Found)"
+                    self.atlassian_cache[ticket_id] = result[ticket_id]
+                else:
+                    logger.warning(f"Error fetching {ticket_id}: HTTP {response.status_code}")
+                    result[ticket_id] = f"Ticket {ticket_id}"
+                    self.atlassian_cache[ticket_id] = result[ticket_id]
+
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Error fetching {ticket_id}: {e}")
+                result[ticket_id] = f"Ticket {ticket_id}"
+                self.atlassian_cache[ticket_id] = result[ticket_id]
+
+        return result
+
+    def consolidate_timesheet(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Generate summary report grouped by Employee and Task (billable only)
+        Consolidate timesheet data by grouping similar tickets and tasks
 
         Args:
-            df: Timesheet DataFrame
+            df: Input timesheet DataFrame
 
         Returns:
-            Summary DataFrame
+            Consolidated DataFrame
         """
-        logger.info("Generating summary report")
+        logger.info("Starting timesheet consolidation")
 
-        billable_df = df[df['Task Billing Type'] == 'Billable'].copy()
-        grouped = billable_df.groupby(['Employee Name', 'Task']).agg({
-            'Total Hours': 'sum',
-            'Comments': lambda x: [str(comment) for comment in x if pd.notna(comment) and str(comment).strip()]
-        }).reset_index()
-
-        max_comments = grouped['Comments'].apply(len).max()
-        for i in range(max_comments):
-            grouped[f'Comment_{i+1}'] = grouped['Comments'].apply(lambda x: x[i] if i < len(x) else '')
-
-        summary = grouped.drop(columns=['Comments'])
-        summary = summary.sort_values(['Employee Name', 'Task'])
-
-        logger.info(f"Generated summary with {len(summary)} entries")
-        return summary
-
-    def generate_template_format(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Generate report in the template format (similar to Template June.csv)
-
-        Args:
-            df: Timesheet DataFrame
-
-        Returns:
-            DataFrame in template format
-        """
-        logger.info("Generating template format report")
-
-        billable_df = df[df['Task Billing Type'] == 'Billable'].copy()
+        # Collect all unique ticket IDs for batch processing
         all_monday_ids = set()
-        for _, row in billable_df.iterrows():
-            if row['Task'] in self.included_task_types:
-                all_monday_ids.update(self.extract_monday_ids(row['Comments']))
+        all_ops_tickets = set()
 
-        monday_items = self.fetch_monday_items(list(all_monday_ids))
-        template_rows = []
-
-        for _, row in billable_df.iterrows():
-            comments = str(row['Comments']) if pd.notna(row['Comments']) else ''
+        for _, row in df.iterrows():
             task = row['Task']
-            monday_ids = self.extract_monday_ids(comments) if task in self.included_task_types else []
+            comments = str(row['Comments'])
 
-            if monday_ids:
-                for monday_id in monday_ids:
-                    ticket_data = monday_items.get(monday_id, {'name': f"Ticket {monday_id}", 'numbers': ''})
-                    template_rows.append({
-                        'CATEGORY': task.upper(),
-                        'MONDAY.COM ID': monday_id,
-                        'TICKET DESCRIPTION': ticket_data['name'],
-                        'ACTUAL HOURS SPENT': row['Total Hours']
-                    })
+            # Skip API calls for certain task types
+            if task not in self.no_api_tasks:
+                all_monday_ids.update(self.extract_monday_ids(comments))
+                all_ops_tickets.update(self.extract_ops_tickets(comments))
+
+        # Fetch all ticket details in batch
+        logger.info("Fetching ticket details from external APIs...")
+        monday_items = self.fetch_monday_items(list(all_monday_ids))
+        atlassian_tickets = self.fetch_atlassian_tickets(list(all_ops_tickets))
+
+        # Group data for consolidation
+        consolidation_groups = defaultdict(lambda: {
+            'total_hours': 0,
+            'comments': [],
+            'employees': set(),
+            'ticket_name': '',
+            'story_point': '',
+            'ticket_source': 'Manual Entry'
+        })
+
+        for _, row in df.iterrows():
+            task = row['Task']
+            employee = row['Employee Name']
+            hours = float(row['Total Hours'])
+            comments = str(row['Comments'])
+
+            # Extract ticket IDs
+            monday_ids = self.extract_monday_ids(comments) if task not in self.no_api_tasks else []
+            ops_tickets = self.extract_ops_tickets(comments) if task not in self.no_api_tasks else []
+
+            tickets_found = monday_ids + ops_tickets
+
+            if not tickets_found:
+                # No tickets found - group by task and first 100 chars of comments
+                key = f"{task}||{comments[:100]}"
+                group = consolidation_groups[key]
+                group['total_hours'] += hours
+                group['comments'].append(comments)
+                group['employees'].add(employee)
+                group['ticket_name'] = comments[:100] + ('...' if len(comments) > 100 else '')
+                group['ticket_source'] = 'Manual Entry'
             else:
-                template_rows.append({
-                    'CATEGORY': task.upper(),
-                    'MONDAY.COM ID': '',
-                    'TICKET DESCRIPTION': comments[:100] + '...' if len(comments) > 100 else comments,
-                    'ACTUAL HOURS SPENT': row['Total Hours']
-                })
+                # Distribute hours equally among found tickets
+                hours_per_ticket = hours / len(tickets_found)
 
-        template_df = pd.DataFrame(template_rows)
-        if not template_df.empty:
-            template_df = template_df.groupby(['CATEGORY', 'MONDAY.COM ID', 'TICKET DESCRIPTION']).agg({
-                'ACTUAL HOURS SPENT': 'sum'
-            }).reset_index()
+                # Process Monday.com tickets
+                for monday_id in monday_ids:
+                    ticket_data = monday_items.get(monday_id, {})
+                    ticket_name = ticket_data.get('name', f'Monday Item {monday_id}')
+                    story_point = ticket_data.get('story_point', '')
 
-        logger.info(f"Generated template format with {len(template_df)} entries")
-        return template_df
+                    key = f"{task}|{monday_id}|{ticket_name}"
+                    group = consolidation_groups[key]
+                    group['total_hours'] += hours_per_ticket
+                    group['comments'].append(comments)
+                    group['employees'].add(employee)
+                    group['ticket_name'] = ticket_name
+                    group['story_point'] = story_point
+                    group['ticket_source'] = 'Monday.com'
 
-    def generate_detailed_report(self, df: pd.DataFrame) -> pd.DataFrame:
+                # Process Atlassian tickets
+                for ops_ticket in ops_tickets:
+                    ticket_name = atlassian_tickets.get(ops_ticket, f'Ticket {ops_ticket}')
+
+                    key = f"{task}|{ops_ticket}|{ticket_name}"
+                    group = consolidation_groups[key]
+                    group['total_hours'] += hours_per_ticket
+                    group['comments'].append(comments)
+                    group['employees'].add(employee)
+                    group['ticket_name'] = ticket_name
+                    group['story_point'] = ''  # Atlassian tickets don't have story points
+                    group['ticket_source'] = 'Atlassian'
+
+        # Create consolidated report
+        consolidated_rows = []
+        for key, group_data in consolidation_groups.items():
+            parts = key.split('|', 2)
+            task = parts[0]
+            ticket_id = parts[1] if len(parts) > 1 and parts[1] else ''
+
+            # Consolidate comments with newlines
+            unique_comments = []
+            seen_comments = set()
+            for comment in group_data['comments']:
+                comment = comment.strip()
+                if comment and comment not in seen_comments:
+                    unique_comments.append(comment)
+                    seen_comments.add(comment)
+
+            # Join comments with \n for newlines in the same cell
+            consolidated_comments = '\n'.join(unique_comments)
+            employees_involved = ', '.join(sorted(group_data['employees']))
+
+            consolidated_rows.append({
+                'Task': task,
+                'Ticket ID': ticket_id,
+                'Ticket Name': group_data['ticket_name'],
+                'Story Point': group_data['story_point'],
+                'Logged Hours': round(group_data['total_hours'], 2),
+                'Consolidated Comments': consolidated_comments,
+                'Employees Involved': employees_involved,
+                'Ticket Source': group_data['ticket_source']
+            })
+
+        consolidated_df = pd.DataFrame(consolidated_rows)
+        consolidated_df = consolidated_df.sort_values(['Task', 'Ticket ID'])
+
+        logger.info(f"Consolidated {len(df)} records into {len(consolidated_df)} groups")
+        return consolidated_df
+
+    def process_timesheet(self, input_file: str, output_dir: str = None) -> str:
         """
-        Generate detailed report with Employee Name, Task, Total Hours, Comments, and Monday.com data
+        Main processing function
 
         Args:
-            df: Timesheet DataFrame
+            input_file: Path to input timesheet file
+            output_dir: Output directory (optional)
 
         Returns:
-            Detailed DataFrame with Monday.com data
+            Path to generated consolidated report
         """
-        logger.info("Generating detailed report")
+        logger.info(f"Processing timesheet: {input_file}")
 
-        billable_df = df[df['Task Billing Type'] == 'Billable'].copy()
-        all_monday_ids = set()
-        for _, row in billable_df.iterrows():
-            if row['Task'] in self.included_task_types:
-                all_monday_ids.update(self.extract_monday_ids(row['Comments']))
+        # Read and validate input file
+        df = self.read_timesheet_file(input_file)
 
-        monday_items = self.fetch_monday_items(list(all_monday_ids))
-        detailed_rows = []
+        # Generate consolidated report
+        consolidated_df = self.consolidate_timesheet(df)
 
-        for _, row in billable_df.iterrows():
-            comments = str(row['Comments']) if pd.notna(row['Comments']) else ''
-            task = row['Task']
-            monday_ids = self.extract_monday_ids(comments) if task in self.included_task_types else []
+        # Prepare output file path
+        input_path = Path(input_file)
+        if output_dir:
+            output_path = Path(output_dir)
+            output_path.mkdir(exist_ok=True)
+        else:
+            output_path = input_path.parent
 
-            if monday_ids:
-                for monday_id in monday_ids:
-                    ticket_data = monday_items.get(monday_id, {'name': f"Ticket {monday_id}", 'numbers': ''})
-                    detailed_rows.append({
-                        'Task': task,
-                        'Employee Name': row['Employee Name'],
-                        'Comments': comments,
-                        'Total Hours': row['Total Hours'],
-                        'Ticket Name': ticket_data['name'],
-                        'Story Point': ticket_data['numbers']
-                    })
-            else:
-                detailed_rows.append({
-                    'Task': task,
-                    'Employee Name': row['Employee Name'],
-                    'Comments': comments,
-                    'Total Hours': row['Total Hours'],
-                    'Ticket Name': '',
-                    'Story Point': ''
-                })
+        output_file = output_path / f"{input_path.stem}_Consolidated_Report.csv"
 
-        detailed_df = pd.DataFrame(detailed_rows)
-        detailed_df = detailed_df.sort_values(['Task', 'Employee Name', 'Comments'])
-        logger.info(f"Generated detailed report with {len(detailed_df)} entries")
-        return detailed_df
+        # Validate output file name
+        if not output_file.name.endswith('_Consolidated_Report.csv'):
+            logger.error(f"Output file name must end with '_Consolidated_Report.csv', got: {output_file.name}")
+            raise ValueError(f"Output file name must end with '_Consolidated_Report.csv', got: {output_file.name}")
 
-    def process_timesheet(self, input_file: str, output_dir: str = "output") -> Dict[str, str]:
-        """
-        Process timesheet file and generate all reports
+        # Save consolidated report
+        consolidated_df.to_csv(output_file, index=False)
 
-        Args:
-            input_file: Path to input timesheet CSV file
-            output_dir: Directory to save output files (default: output)
-
-        Returns:
-            Dictionary with paths to generated files
-        """
-        logger.info(f"Starting timesheet processing for: {input_file}")
-
-        Path(output_dir).mkdir(exist_ok=True)
-        df = self.read_timesheet_csv(input_file)
-        summary_df = self.generate_summary_report(df)
-        template_df = self.generate_template_format(df)
-        detailed_df = self.generate_detailed_report(df)
-
-        base_name = Path(input_file).stem
-        summary_file = f"{output_dir}/{base_name}_summary.csv"
-        template_file = f"{output_dir}/{base_name}_template_format.csv"
-        detailed_file = f"{output_dir}/{base_name}_detailed.csv"
-
-        summary_df.to_csv(summary_file, index=False)
-        template_df.to_csv(template_file, index=False)
-        detailed_df.to_csv(detailed_file, index=False)
+        # Print summary
+        total_original_hours = df['Total Hours'].sum()
+        total_consolidated_hours = consolidated_df['Logged Hours'].sum()
 
         logger.info("=== Processing Complete ===")
-        logger.info(f"Total records processed: {len(df)}")
-        logger.info(f"Billable records: {len(df[df['Task Billing Type'] == 'Billable'])}")
-        logger.info(f"Summary entries: {len(summary_df)}")
-        logger.info(f"Template entries: {len(template_df)}")
-        logger.info(f"Detailed entries: {len(detailed_df)}")
-        logger.info(f"Files generated:")
-        logger.info(f"  - Summary: {summary_file}")
-        logger.info(f"  - Template: {template_file}")
-        logger.info(f"  - Detailed: {detailed_file}")
+        logger.info(f"Original records: {len(df)}")
+        logger.info(f"Consolidated records: {len(consolidated_df)}")
+        logger.info(f"Original total hours: {total_original_hours:.2f}")
+        logger.info(f"Consolidated total hours: {total_consolidated_hours:.2f}")
+        logger.info(f"Output file: {output_file}")
 
-        return {
-            'summary': summary_file,
-            'template': template_file,
-            'detailed': detailed_file
-        }
+        return str(output_file)
+
 
 def main():
     """Main function to run the script"""
     if len(sys.argv) < 2:
-        print("Usage: python timesheet_processor.py <input_csv_file> [output_directory]")
+        print("Usage: python timesheet_consolidator.py <input_file> [output_directory]")
         print("\nExample:")
-        print("python timesheet_processor.py timesheet.csv [output_folder]")
+        print("python timesheet_consolidator.py timesheet.csv")
+        print("python timesheet_consolidator.py timesheet.xlsx output/")
+        print("\nIMPORTANT: Configure API credentials in the script before running!")
         sys.exit(1)
 
     input_file = sys.argv[1]
-    output_dir = sys.argv[2] if len(sys.argv) > 2 else "output"
+    output_dir = sys.argv[2] if len(sys.argv) > 2 else None
 
     if not Path(input_file).exists():
         print(f"Error: Input file '{input_file}' does not exist")
         sys.exit(1)
 
-    try:
-        processor = TimesheetProcessor()
-        server_time = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%I:%M %p IST on %A, %B %d, %Y')
-        results = processor.process_timesheet(input_file, output_dir)
+    # Configure API credentials here
+    monday_api_key = "YOUR_MONDAY_API_KEY_HERE"  # Replace with your Monday.com API key
 
-        print("\n" + "="*50)
-        print("PROCESSING COMPLETED SUCCESSFULLY!")
-        print("="*50)
-        print(f"Summary report: {results['summary']}")
-        print(f"Template report: {results['template']}")
-        print(f"Detailed report: {results['detailed']}")
+    atlassian_config = {
+        "domain": "your-domain.atlassian.net",  # Replace with your Atlassian domain
+        "email": "your-email@domain.com",  # Replace with your email
+        "api_token": "YOUR_ATLASSIAN_API_TOKEN_HERE"  # Replace with your Atlassian API token
+    }
+
+    try:
+        # Initialize consolidator with API configurations
+        consolidator = TimesheetConsolidator(
+            monday_api_key=monday_api_key,
+            atlassian_config=atlassian_config
+        )
+
+        # Process timesheet
+        output_file = consolidator.process_timesheet(input_file, output_dir)
+
+        print("\n" + "="*60)
+        print("TIMESHEET CONSOLIDATION COMPLETED SUCCESSFULLY!")
+        print("="*60)
+        print(f"Consolidated report saved to: {output_file}")
+        print(f"Processed at: {datetime.now().strftime('%I:%M %p on %A, %B %d, %Y')}")
 
     except Exception as e:
         print(f"Error processing timesheet: {e}")
         logger.error(f"Processing failed: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
