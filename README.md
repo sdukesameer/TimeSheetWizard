@@ -125,33 +125,4 @@ Original total hours: 143.75
 Consolidated total hours: 143.75
 ```
 
----
-
-## 🔒 Security Note
-
-**Do not hardcode your API tokens in public repositories.** Use environment variables or a `.env` file in production environments.
-
----
-
-## 🧩 Future Enhancements
-
-* GUI-based uploader
-* Slack/Email integration for auto-delivery
-* Validation for non-billable hours
-* Monthly auto-scheduler with cron
-
----
-
-## 🤝 Contributions
-
-Open to improvements or integrations! Create a PR or file an issue.
-
----
-
-## 📜 License
-
-MIT License – use it freely but responsibly.
-
----
-
 > Built with ❤️ by Md Sameer
