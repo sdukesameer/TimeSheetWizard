@@ -1,5 +1,3 @@
-Here is a formatted version suitable for a `README.md` file on GitHub.
-
 -----
 
 # Timesheet Processing and Visualisation Utility
