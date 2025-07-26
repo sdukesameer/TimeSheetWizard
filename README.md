@@ -45,8 +45,8 @@ A comprehensive solution for processing employee timesheet data with **Monday.co
 
 1. **Access the web app**: [🔗 [Timesheet Processor & Visualizer](https://md-sameer-ck.github.io/TimeSheetWizard/)]
 2. **Upload your file**:
-   - Raw timesheet (CSV/Excel) → Full processing with API calls
-   - Consolidated report → Direct visualisation
+   - Raw timesheet (Excel) → Full processing with API calls
+   - Consolidated report (CSV) → Direct visualisation
 3. **Configure APIs** (optional): Click "Configure API Settings"
 4. **Visualise**: Interactive charts, statistics, and data tables
 
@@ -55,7 +55,7 @@ A comprehensive solution for processing employee timesheet data with **Monday.co
 ## 📊 Features
 
 ### **Data Processing**
-- ✅ Supports CSV and Excel (.xlsx) files
+- ✅ Supports Excel (.xlsx) files
 - 🔍 Extracts Monday.com IDs (10-digit) and Atlassian tickets (OPS-XXX)
 - 📊 Fetches ticket details via API (names, story points)
 - 🧠 Intelligent grouping and hour distribution
