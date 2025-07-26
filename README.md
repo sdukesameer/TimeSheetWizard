@@ -43,7 +43,7 @@ A comprehensive solution for processing employee timesheet data with **Monday.co
 
 ### Option B: Web Visualizer
 
-1. **Access the web app**: [GitHub Pages Link]
+1. **Access the web app**: [🔗 [Timesheet Processor & Visualizer](https://md-sameer-ck.github.io/TimeSheetWizard/)]
 2. **Upload your file**:
    - Raw timesheet (CSV/Excel) → Full processing with API calls
    - Consolidated report → Direct visualisation
