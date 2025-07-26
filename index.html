@@ -386,7 +386,7 @@
                     <div class="config-grid">
                         <div class="input-group">
                             <label for="mondayApiKey">API Key:</label>
-                            <input type="password" id="mondayApiKey" placeholder="Your Monday.com API key">
+                            <input type="text" id="mondayApiKey" placeholder="Your Monday.com API key">
                         </div>
                     </div>
                 </div>
@@ -404,7 +404,7 @@
                         </div>
                         <div class="input-group">
                             <label for="atlassianToken">API Token:</label>
-                            <input type="password" id="atlassianToken" placeholder="Your Atlassian API token">
+                            <input type="text" id="atlassianToken" placeholder="Your Atlassian API token">
                         </div>
                     </div>
                 </div>
@@ -565,11 +565,15 @@
                 return;
             }
 
-            const validExtensions = ['.csv', '.xlsx'];
             const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
 
-            if (!validExtensions.includes(fileExtension)) {
-                showError('Please select a valid CSV or Excel file.');
+            if (fileExtension === '.csv') {
+                if (!file.name.includes('Consolidated_Report')) {
+                    showError('CSV files must be named with "Consolidated_Report" format (e.g., filename_Consolidated_Report.csv)');
+                    return;
+                }
+            } else if (fileExtension !== '.xlsx') {
+                showError('Please select a valid CSV (Consolidated Report only) or Excel file.');
                 return;
             }
 
@@ -595,7 +599,8 @@
                         hideProcessing();
                         showSuccess(`Loaded consolidated report with ${processedData.length} entries!`);
 
-                        // Show results but hide download section
+                        // Hide API config and download section for consolidated reports
+                        document.querySelector('.config-panel').style.display = 'none';
                         document.getElementById('downloadSection').classList.add('hidden');
                         document.getElementById('statsPanel').classList.remove('hidden');
                         document.getElementById('chartsContainer').classList.remove('hidden');
@@ -609,10 +614,10 @@
                     updateProgress(30, 'Extracting ticket information...');
                     const ticketInfo = extractAllTickets(rawData);
 
-                    updateProgress(50, 'Fetching data from APIs...');
+                    updateProgress(50, 'Preparing API calls...');
                     const apiData = await fetchAPIData(ticketInfo);
 
-                    updateProgress(70, 'Consolidating timesheet data...');
+                    updateProgress(75, 'Consolidating timesheet data...');
                     processedData = consolidateData(rawData, apiData);
 
                     updateProgress(90, 'Generating visualizations...');
@@ -624,7 +629,8 @@
                         hideProcessing();
                         showSuccess(`Successfully processed ${rawData.length} records into ${processedData.length} consolidated entries!`);
 
-                        // Show all results including download section
+                        // Hide API config panel after processing and show all results
+                        document.querySelector('.config-panel').style.display = 'none';
                         document.getElementById('downloadSection').classList.remove('hidden');
                         document.getElementById('statsPanel').classList.remove('hidden');
                         document.getElementById('chartsContainer').classList.remove('hidden');
@@ -718,10 +724,11 @@
                         }
                     }
                     if (!found && standardName !== 'Task Billing Type') {
-                        // Check if any similar column exists
-                        const similarKey = Object.keys(row).find(key =>
-                            key.toLowerCase().includes(standardName.toLowerCase().split(' ')[0])
-                        );
+                        // Check if any similar column exists (case-insensitive)
+                        const similarKey = Object.keys(row).find(key => {
+                            const keyLower = key.toLowerCase();
+                            return alternatives.some(alt => keyLower.includes(alt.toLowerCase()) || alt.toLowerCase().includes(keyLower));
+                        });
                         if (similarKey) {
                             normalizedRow[standardName] = row[similarKey];
                         }
@@ -744,13 +751,20 @@
                 return !billingType || billingType === 'Billable';
             });
 
+            // Debug: Log available columns
+            if (filteredData.length > 0) {
+                console.log('Available columns:', Object.keys(filteredData[0]));
+            }
+
             // Validate required columns
             const requiredColumns = ['Employee Name', 'Task', 'Total Hours', 'Comments'];
             const sampleRow = filteredData[0] || {};
             const missingColumns = requiredColumns.filter(col => !sampleRow.hasOwnProperty(col));
 
             if (missingColumns.length > 0) {
-                throw new Error(`Missing required columns: ${missingColumns.join(', ')}`);
+                console.error('Missing columns:', missingColumns);
+                console.error('Available columns:', Object.keys(sampleRow));
+                throw new Error(`Missing required columns: ${missingColumns.join(', ')}. Available columns: ${Object.keys(sampleRow).join(', ')}`);
             }
 
             // Clean and validate data
@@ -788,10 +802,11 @@
                     }
 
                     // Extract OPS tickets
-                    const opsMatches = comments.match(/OPS\s*-\s*\d+/gi);
+                    const opsMatches = comments.match(/OPS\D*(\d+)/gi);
                     if (opsMatches) {
-                        opsMatches.forEach(ticket => {
-                            const normalized = ticket.replace(/\s*-\s*/, '-').toUpperCase();
+                        opsMatches.forEach(match => {
+                            const number = match.match(/\d+/)[0];
+                            const normalized = `OPS-${number}`;
                             opsTickets.add(normalized);
                         });
                     }
@@ -806,42 +821,88 @@
 
         // API data fetching
         async function fetchAPIData(ticketInfo) {
-            const mondayData = {};
-            const atlassianData = {};
+        const mondayData = {};
+        const atlassianData = {};
 
-            // Get API credentials
-            const mondayApiKey = document.getElementById('mondayApiKey').value;
-            const atlassianDomain = document.getElementById('atlassianDomain').value;
-            const atlassianEmail = document.getElementById('atlassianEmail').value;
-            const atlassianToken = document.getElementById('atlassianToken').value;
+        // Get API credentials
+        const mondayApiKey = document.getElementById('mondayApiKey').value;
+        const atlassianDomain = document.getElementById('atlassianDomain').value;
+        const atlassianEmail = document.getElementById('atlassianEmail').value;
+        const atlassianToken = document.getElementById('atlassianToken').value;
 
-            // Fetch Monday.com data
-            if (mondayApiKey && ticketInfo.mondayIds.length > 0) {
-                try {
-                    const mondayResult = await fetchMondayItems(ticketInfo.mondayIds, mondayApiKey);
-                    Object.assign(mondayData, mondayResult);
-                } catch (error) {
-                    console.warn('Monday.com API error:', error);
-                }
+        const totalTickets = ticketInfo.mondayIds.length + ticketInfo.opsTickets.length;
+        let processedTickets = 0;
+
+        // Fetch Monday.com data
+        if (mondayApiKey && ticketInfo.mondayIds.length > 0) {
+            try {
+                updateProgress(55, `Fetching ${ticketInfo.mondayIds.length} Monday.com tickets...`);
+                const mondayResult = await fetchMondayItems(ticketInfo.mondayIds, mondayApiKey);
+                Object.assign(mondayData, mondayResult);
+                processedTickets += ticketInfo.mondayIds.length;
+                updateProgress(55 + (processedTickets / totalTickets) * 10, `Monday.com data retrieved`);
+            } catch (error) {
+                console.warn('Monday.com API error:', error);
+                updateProgress(55 + (processedTickets / totalTickets) * 10, `Monday.com API failed - continuing...`);
             }
-
-            // Fetch Atlassian data
-            if (atlassianDomain && atlassianEmail && atlassianToken && ticketInfo.opsTickets.length > 0) {
-                try {
-                    const atlassianResult = await fetchAtlassianTickets(
-                        ticketInfo.opsTickets,
-                        atlassianDomain,
-                        atlassianEmail,
-                        atlassianToken
-                    );
-                    Object.assign(atlassianData, atlassianResult);
-                } catch (error) {
-                    console.warn('Atlassian API error:', error);
-                }
-            }
-
-            return { mondayData, atlassianData };
         }
+
+        // Fetch Atlassian data with individual ticket progress
+        if (atlassianDomain && atlassianEmail && atlassianToken && ticketInfo.opsTickets.length > 0) {
+            try {
+                updateProgress(60, `Fetching ${ticketInfo.opsTickets.length} Atlassian tickets...`);
+
+                // Process tickets individually for better progress tracking
+                for (let i = 0; i < ticketInfo.opsTickets.length; i++) {
+                    const ticketId = ticketInfo.opsTickets[i];
+                    const progress = 60 + ((i + 1) / ticketInfo.opsTickets.length) * 8;
+
+                    updateProgress(progress, `Fetching ${ticketId} (${i + 1}/${ticketInfo.opsTickets.length})`);
+
+                    try {
+                        const url = `https://${atlassianDomain}/rest/api/3/issue/${ticketId}`;
+                        const response = await fetch(url, {
+                            method: 'GET',
+                            headers: {
+                                'Authorization': 'Basic ' + btoa(`${atlassianEmail}:${atlassianToken}`),
+                                'Accept': 'application/json'
+                            }
+                        });
+
+                        if (response.ok) {
+                            const issueData = await response.json();
+                            const summary = issueData.fields?.summary || `Ticket ${ticketId}`;
+                            atlassianData[ticketId] = summary.replace(/[^\x00-\xFF]/g, '');
+                            updateProgress(progress, `✓ ${ticketId}: ${summary.substring(0, 30)}...`);
+                        } else if (response.status === 404) {
+                            atlassianData[ticketId] = `Ticket ${ticketId} (Not Found)`;
+                            updateProgress(progress, `⚠ ${ticketId}: Not found`);
+                        } else {
+                            atlassianData[ticketId] = `Ticket ${ticketId}`;
+                            updateProgress(progress, `⚠ ${ticketId}: API error`);
+                        }
+                    } catch (error) {
+                        console.warn(`Error fetching ${ticketId}:`, error);
+                        atlassianData[ticketId] = `Ticket ${ticketId}`;
+                        updateProgress(progress, `✗ ${ticketId}: Network error`);
+                    }
+
+                    // Small delay to show progress
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+            } catch (error) {
+                console.warn('Atlassian API error:', error);
+                updateProgress(68, 'Atlassian API failed - continuing...');
+            }
+        }
+
+        if (totalTickets === 0) {
+            updateProgress(65, 'No API tickets found - using manual entries');
+        }
+
+        return { mondayData, atlassianData };
+    }
 
         // Monday.com API integration
         async function fetchMondayItems(itemIds, apiKey) {
@@ -917,7 +978,7 @@
                     if (response.ok) {
                         const issueData = await response.json();
                         const summary = issueData.fields?.summary || `Ticket ${ticketId}`;
-                        result[ticketId] = summary.replace(/[^\x00-\xFF]/g, ''); // Remove emojis
+                        result[ticketId] = summary.replace(/[^\x00-\xFF]/g, '');
                     } else if (response.status === 404) {
                         result[ticketId] = `Ticket ${ticketId} (Not Found)`;
                     } else {
@@ -957,7 +1018,14 @@
                 'Consolidated Comments': row['Consolidated Comments'] || '',
                 'Employees Involved': row['Employees Involved'] || '',
                 'Ticket Source': row['Ticket Source'] || 'Manual Entry'
-            }));
+            })).sort((a, b) => {
+                if (a.Task !== b.Task) {
+                    return a.Task.localeCompare(b.Task);
+                }
+                const aName = String(a['Ticket Name'] || '');
+                const bName = String(b['Ticket Name'] || '');
+                return aName.localeCompare(bName);
+            });
         }
 
         // Data consolidation
@@ -981,7 +1049,8 @@
 
                 const allTickets = [...mondayIds, ...opsTickets];
 
-                if (allTickets.length === 0) {
+                if (allTickets.length === 0 || (Object.keys(mondayData).length === 0 && Object.keys(atlassianData).length === 0)) {
+
                     // No tickets found - group by task and first 100 chars of comments
                     const key = `${task}||${comments.substring(0, 100)}`;
 
@@ -1017,13 +1086,13 @@
                         if (!consolidationGroups[key]) {
                             consolidationGroups[key] = {
                                 task: task,
-                                ticketId: mondayId,
+                                ticketId: Object.keys(mondayData).length > 0 ? mondayId : '',
                                 ticketName: ticketName,
                                 storyPoint: storyPoint,
                                 totalHours: 0,
                                 comments: new Set(),
                                 employees: new Set(),
-                                ticketSource: 'Monday.com'
+                                ticketSource: Object.keys(mondayData).length > 0 ? 'Monday.com' : 'Manual Entry'
                             };
                         }
 
@@ -1036,19 +1105,18 @@
                     // Process Atlassian tickets
                     opsTickets.forEach(opsTicket => {
                         const ticketName = atlassianData[opsTicket] || `Ticket ${opsTicket}`;
-
                         const key = `${task}|${opsTicket}|${ticketName}`;
 
                         if (!consolidationGroups[key]) {
                             consolidationGroups[key] = {
                                 task: task,
-                                ticketId: opsTicket,
+                                ticketId: Object.keys(atlassianData).length > 0 ? opsTicket : '',
                                 ticketName: ticketName,
                                 storyPoint: '',
                                 totalHours: 0,
                                 comments: new Set(),
                                 employees: new Set(),
-                                ticketSource: 'Atlassian'
+                                ticketSource: Object.keys(atlassianData).length > 0 ? 'Atlassian' : 'Manual Entry'
                             };
                         }
 
@@ -1079,12 +1147,18 @@
                 };
             });
 
-            // Sort by task and ticket ID
+            // Sort by task and ticket name
             consolidatedData.sort((a, b) => {
-                if (a.Task !== b.Task) {
-                    return a.Task.localeCompare(b.Task);
+                const taskA = String(a.Task || a['Task'] || '').trim();
+                const taskB = String(b.Task || b['Task'] || '').trim();
+
+                if (taskA !== taskB) {
+                    return taskA.localeCompare(taskB);
                 }
-                return a['Ticket ID'].localeCompare(b['Ticket ID']);
+
+                const nameA = String(a['Ticket Name'] || '').trim();
+                const nameB = String(b['Ticket Name'] || '').trim();
+                return nameA.localeCompare(nameB);
             });
 
             return consolidatedData;
@@ -1115,7 +1189,7 @@
                 if (row['Task']) {
                     uniqueTasks.add(row['Task']);
                 }
-                if (row['Ticket ID']) {
+                if (row['Ticket ID'] || row['Task']) {
                     ticketCount++;
                 }
             });
@@ -1309,8 +1383,8 @@
                 const ticketName = row['Ticket Name'] || 'Unnamed';
                 const hours = row['Logged Hours'] || 0;
 
-                if (ticketId) {
-                    const key = `${ticketId} - ${ticketName}`;
+                if (ticketId || row['Ticket Source'] === 'Manual Entry') {
+                    const key = ticketId ? `${ticketId} - ${ticketName}` : ticketName;
                     ticketHours[key] = (ticketHours[key] || 0) + hours;
                 }
             });
