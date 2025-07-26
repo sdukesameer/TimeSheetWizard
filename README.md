@@ -1,128 +1,167 @@
-# 🕒 Timesheet Processor
+# 🕒 Timesheet Processor & Visualizer
 
-A robust and automated Python-based tool to process employee timesheet data from `.csv` or `.xlsx` files. It integrates with **Monday.com** and **Atlassian Jira** APIs to fetch ticket details, group tasks, and generate a **consolidated report** with enhanced traceability.
+A comprehensive solution for processing employee timesheet data with **Monday.com** and **Atlassian Jira** integration, featuring both local Python processing and web-based visualisation.
 
----
+## 🌟 Two Ways to Use
 
-## 🚀 Features
+### 1. **Local Processing** (Python Script)
+- Download and configure the Python script locally
+- Process raw timesheet files with full API integration
+- Generate consolidated CSV reports
+- Ideal for batch processing and automation
 
-- ✅ Accepts both `.csv` and `.xlsx` timesheet files
-- 🔍 Extracts ticket IDs (Monday.com item IDs & Atlassian OPS tickets) from comments
-- 📊 Fetches ticket details (like name & story points) via API
-- 🧠 Automatically groups and consolidates similar tasks/tickets
-- 📁 Outputs a clean, readable `.csv` report
-- ⚙️ Caching to avoid redundant API calls
-- 🛑 Skips known non-ticket tasks like meetings and deployments
-
----
-
-## 📦 Requirements
-
-- Python 3.7+
-- Required libraries:
-  - `pandas`
-  - `requests`
-  - `openpyxl`
-
-Install them via:
-
-```bash
-pip install pandas requests openpyxl
-````
+### 2. **Web Visualizer** (GitHub Pages)
+- Access the web app directly in your browser
+- Upload either raw timesheets OR pre-consolidated reports
+- Interactive charts and visualisations
+- No installation required
 
 ---
 
-## 📂 Input Format
+## 🚀 Getting Started
 
-Your timesheet file must include the following columns (or their aliases):
+### Option A: Local Python Processing
 
-* **Employee Name** (aliases: Name, Worker, Employee)
-* **Task** (aliases: Task Type, Activity, Work Type)
-* **Total Hours** (aliases: Hours, Time Spent, Duration)
-* **Comments** (aliases: Description, Notes)
+1. **Download the Python script**: `timesheet_processor.py`
+2. **Install requirements**:
+   ```bash
+   pip install pandas requests openpyxl
+   ```
+3. **Configure API credentials** in the script:
+   ```python
+   monday_api_key = "YOUR_MONDAY_API_KEY"
+   atlassian_config = {
+       "domain": "your-domain.atlassian.net",
+       "email": "your-email@domain.com", 
+       "api_token": "YOUR_ATLASSIAN_API_TOKEN"
+   }
+   ```
+4. **Run processing**:
+   ```bash
+   python timesheet_processor.py your_timesheet.csv
+   ```
 
-Additionally, a **Billing Type** column (`Billable` entries only) is supported if present.
+### Option B: Web Visualizer
+
+1. **Access the web app**: [GitHub Pages Link]
+2. **Upload your file**:
+   - Raw timesheet (CSV/Excel) → Full processing with API calls
+   - Consolidated report → Direct visualisation
+3. **Configure APIs** (optional): Click "Configure API Settings"
+4. **Visualise**: Interactive charts, statistics, and data tables
 
 ---
 
-## 🛠️ Setup
+## 📊 Features
 
-Before running the script, configure your API credentials:
+### **Data Processing**
+- ✅ Supports CSV and Excel (.xlsx) files
+- 🔍 Extracts Monday.com IDs (10-digit) and Atlassian tickets (OPS-XXX)
+- 📊 Fetches ticket details via API (names, story points)
+- 🧠 Intelligent grouping and hour distribution
+- 📁 Generates clean consolidated reports
 
-In the `main()` function or via environment variables:
+### **Web Visualization** 
+- 📈 Interactive charts (Bar, Pie, Doughnut)
+- 👥 Employee hours distribution
+- 📋 Task type breakdown  
+- 🎫 Ticket source analysis
+- 📥 Export options (CSV/JSON)
 
-### Monday.com
+### **Smart File Detection**
+- Raw timesheets → Full API processing
+- Files with `Consolidated_Report` → Direct visualization
+- Automatic workflow selection
 
-```python
-monday_api_key = "YOUR_MONDAY_API_KEY"
+---
+
+## 📂 Input Formats
+
+### Raw Timesheet Requirements:
+- **Employee Name** (or Name, Worker, Employee)
+- **Task** (or Task Type, Activity, Work Type) 
+- **Total Hours** (or Hours, Time Spent, Duration)
+- **Comments** (or Description, Notes)
+- **Billing Type** (optional - filters for 'Billable' only)
+
+### Consolidated Report Format:
+Generated files contain: Task, Ticket ID, Ticket Name, Story Point, Logged Hours, Consolidated Comments, Employees Involved, Ticket Source
+
+---
+
+## 🔧 API Configuration
+
+### Monday.com:
+- Generate an API key from Monday.com developer settings
+- GraphQL endpoint for item details and story points
+
+### Atlassian Jira:
+- Create an API token from Atlassian account settings  
+- REST API for ticket summaries
+- Requires domain, email, and token
+
+---
+
+## 📤 Output Examples
+
+### Console Output:
 ```
-
-### Atlassian Jira
-
-```python
-atlassian_config = {
-    "domain": "your-domain.atlassian.net",
-    "email": "your-email@example.com",
-    "api_token": "YOUR_ATLASSIAN_API_TOKEN"
-}
-```
-
----
-
-## ⚙️ Usage
-
-### Basic Command
-
-```bash
-python timesheet_consolidator.py <input_file> [output_directory]
-```
-
-### Examples
-
-```bash
-python timesheet_consolidator.py timesheet.csv
-python timesheet_consolidator.py timesheet.xlsx ./output/
-```
-
----
-
-## 📤 Output
-
-The script generates a CSV file named:
-
-```
-<input_file_name>_Consolidated_Report.csv
-```
-
-This file includes:
-
-| Task | Ticket ID | Ticket Name | Story Point | Logged Hours | Consolidated Comments | Employees Involved | Ticket Source |
-| ---- | --------- | ----------- | ----------- | ------------ | --------------------- | ------------------ | ------------- |
-
----
-
-## 🧠 Logic Summary
-
-* Extracts `Monday.com` IDs (10-digit numbers) and `OPS-XXX` tickets from comments.
-* Groups hours by Task + Ticket, splitting hours evenly if multiple tickets are mentioned.
-* Skips Monday/Atlassian API calls for tasks like:
-
-  * Dev Ops Activity
-  * Deployment
-  * Meetings & Discussions
-* Merges duplicate comments and lists involved employees.
-
----
-
-## ✅ Example Output
-
-```
-Consolidated report saved to: ./timesheet_Consolidated_Report.csv
-Processed at: 11:23 AM on Tuesday, July 23, 2025
+=== Processing Complete ===
 Original records: 68
-Consolidated records: 23
+Consolidated records: 23  
 Original total hours: 143.75
 Consolidated total hours: 143.75
+Output: timesheet_Consolidated_Report.csv
 ```
 
-> Built with ❤️ by Md Sameer
+### Web Statistics:
+- Total Hours: 143.75
+- Employees: 8
+- Task Types: 12
+- Tickets Processed: 15
+
+---
+
+## 🛠️ Use Cases
+
+### **Local Python Script**:
+- **Batch processing** multiple files
+- **Automated workflows** and scheduling
+- **Enterprise integration** with existing systems
+- **Offline processing** of sensitive data
+
+### **Web Visualizer**:
+- **Quick analysis** and reporting
+- **Stakeholder presentations** with interactive charts
+- **Remote access** without software installation
+- **Collaborative review** of processed data
+
+---
+
+## 🔒 Security Notes
+
+- **Local script**: API credentials stored in a local file
+- **Web app**: Credentials only in browser memory (not stored)
+- **CORS limitations**: Some API calls may require a proxy for the web version
+- **Data privacy**: Web processing happens client-side only
+
+---
+
+## 📈 Example Workflow
+
+1. **Local Processing**: Use Python script to process raw timesheets → Generate `timesheet_Consolidated_Report.csv`
+2. **Web Visualization**: Upload consolidated report to web app → Generate interactive charts for presentations
+3. **Hybrid Approach**: Process locally for sensitive data, visualise online for sharing
+
+---
+
+## 🤝 Contributing
+
+- Report issues with sample data (anonymised)
+- Feature requests welcome
+- API integration improvements
+- Chart and visualisation enhancements
+
+---
+
+Built with ❤️ by Md Sameer for efficient timesheet management and visualisation.
