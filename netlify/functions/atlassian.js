@@ -35,7 +35,8 @@ exports.handler = async (event, context) => {
           statusCode: res.statusCode,
           headers: { 
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type"
+          "Access-Control-Allow-Headers": "*",
+          "Access-Control-Allow-Methods": "*"
           },
           body: data
         });
@@ -47,7 +48,8 @@ exports.handler = async (event, context) => {
         statusCode: 500,
         headers: { 
           "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Headers": "Content-Type"
+          "Access-Control-Allow-Headers": "*",
+          "Access-Control-Allow-Methods": "*"
         },
         body: JSON.stringify({ error: "Server error" })
       });
