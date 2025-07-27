@@ -495,9 +495,10 @@
             document.getElementById('successMessage').classList.add('hidden');
         }
 
-        function updateProgress(percentage, status) {
+        function updateProgress(percentage, status, detail = '') {
             document.getElementById('progressFill').style.width = percentage + '%';
-            document.getElementById('processingStatus').textContent = status;
+            const statusText = detail ? `${status} - ${detail}` : status;
+            document.getElementById('processingStatus').textContent = statusText;
         }
 
         function showProcessing() {
@@ -531,70 +532,71 @@
                 return;
             }
 
+            const validExtensions = ['.csv', '.xlsx'];
             const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
 
-            if (fileExtension === '.csv') {
-                if (!file.name.includes('Consolidated_Report')) {
-                    showError('CSV files must be named with "Consolidated_Report" format (e.g., filename_Consolidated_Report.csv)');
-                    return;
-                }
-            } else if (fileExtension !== '.xlsx') {
-                showError('Please select a valid CSV (Consolidated Report only) or Excel file.');
+            if (!validExtensions.includes(fileExtension)) {
+                showError('Please select a valid CSV or Excel file.');
                 return;
             }
 
-            // Check if this is already a consolidated report
             const isConsolidatedReport = file.name.includes('Consolidated_Report');
-
             showProcessing();
 
             try {
                 // Step 1: Read the file
-                updateProgress(10, 'Reading file...');
+                updateProgress(5, 'Upload successful', '');
+                await new Promise(resolve => setTimeout(resolve, 300));
+
+                updateProgress(10, 'File validated', '');
                 rawData = await readFile(file);
 
                 if (isConsolidatedReport) {
-                    // Direct visualization for consolidated reports
-                    updateProgress(50, 'Processing consolidated report...');
+                    updateProgress(35, 'API triggering', 'Processing consolidated report');
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
+                    updateProgress(50, 'Processing consolidated report', '');
                     processedData = processConsolidatedReport(rawData);
-                    updateProgress(90, 'Generating visualizations...');
+
+                    updateProgress(95, 'Consolidating data', '');
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
+                    updateProgress(100, 'Complete', '');
                     generateVisualization();
-                    updateProgress(100, 'Complete!');
 
                     setTimeout(() => {
                         hideProcessing();
                         showSuccess(`Loaded consolidated report with ${processedData.length} entries!`);
-
-                        // Hide API config and download section for consolidated reports
                         document.getElementById('downloadSection').classList.add('hidden');
                         document.getElementById('statsPanel').classList.remove('hidden');
                         document.getElementById('chartsContainer').classList.remove('hidden');
                         document.getElementById('dataTable').classList.remove('hidden');
                     }, 500);
                 } else {
-                    // Full processing for raw timesheets
-                    updateProgress(20, 'Normalizing data...');
+                    updateProgress(20, 'Normalizing data', '');
                     rawData = normalizeColumns(rawData);
+                    await new Promise(resolve => setTimeout(resolve, 300));
 
-                    updateProgress(30, 'Extracting ticket information...');
+                    updateProgress(30, 'Extracting ticket information', '');
                     const ticketInfo = extractAllTickets(rawData);
+                    await new Promise(resolve => setTimeout(resolve, 300));
 
-                    updateProgress(50, 'Preparing API calls...');
-                    const apiData = await fetchAPIData(ticketInfo);
+                    updateProgress(35, 'API triggering', '');
+                    const apiData = await fetchAPIDataWithProgress(ticketInfo);
 
-                    updateProgress(75, 'Consolidating timesheet data...');
+                    updateProgress(85, 'Consolidating data', '');
                     processedData = consolidateData(rawData, apiData);
+                    await new Promise(resolve => setTimeout(resolve, 300));
 
-                    updateProgress(90, 'Generating visualizations...');
+                    updateProgress(95, 'Generating visualizations', '');
                     generateVisualization();
+                    await new Promise(resolve => setTimeout(resolve, 300));
 
-                    updateProgress(100, 'Complete!');
+                    updateProgress(100, 'Complete', '');
 
                     setTimeout(() => {
                         hideProcessing();
                         showSuccess(`Successfully processed ${rawData.length} records into ${processedData.length} consolidated entries!`);
-
-                        // Hide API config panel after processing and show all results
                         document.getElementById('downloadSection').classList.remove('hidden');
                         document.getElementById('statsPanel').classList.remove('hidden');
                         document.getElementById('chartsContainer').classList.remove('hidden');
@@ -784,24 +786,40 @@
         }
 
         // API data fetching
-        async function fetchAPIData(ticketInfo) {
+        async function fetchAPIDataWithProgress(ticketInfo) {
             const mondayData = {};
             const atlassianData = {};
 
-            // Fetch Monday.com data (using server-side API)
-            if (ticketInfo.mondayIds.length > 0) {
+            const mondayApiKey = document.getElementById('mondayApiKey').value;
+            const atlassianDomain = document.getElementById('atlassianDomain').value;
+            const atlassianEmail = document.getElementById('atlassianEmail').value;
+            const atlassianToken = document.getElementById('atlassianToken').value;
+
+            let currentProgress = 35;
+
+            // Fetch Monday.com data
+            if (mondayApiKey && ticketInfo.mondayIds.length > 0) {
                 try {
-                    const mondayResult = await fetchMondayItems(ticketInfo.mondayIds);
+                    updateProgress(currentProgress, 'Fetching Monday.com data', `Processing ${ticketInfo.mondayIds.length} items`);
+
+                    const mondayResult = await fetchMondayItemsWithProgress(ticketInfo.mondayIds, mondayApiKey);
                     Object.assign(mondayData, mondayResult);
+                    currentProgress = 60;
                 } catch (error) {
                     console.warn('Monday.com API error:', error);
                 }
             }
 
-            // Fetch Atlassian data (using server-side API)
-            if (ticketInfo.opsTickets.length > 0) {
+            // Fetch Atlassian data
+            if (atlassianDomain && atlassianEmail && atlassianToken && ticketInfo.opsTickets.length > 0) {
                 try {
-                    const atlassianResult = await fetchAtlassianTickets(ticketInfo.opsTickets);
+                    const atlassianResult = await fetchAtlassianTicketsWithProgress(
+                        ticketInfo.opsTickets,
+                        atlassianDomain,
+                        atlassianEmail,
+                        atlassianToken,
+                        currentProgress
+                    );
                     Object.assign(atlassianData, atlassianResult);
                 } catch (error) {
                     console.warn('Atlassian API error:', error);
@@ -874,6 +892,100 @@
                     result[ticketId] = `Ticket ${ticketId}`;
                 }
             }
+            return result;
+        }
+
+        async function fetchMondayItemsWithProgress(itemIds, apiKey) {
+            // Progress simulation for batches
+            for (let i = 0; i < itemIds.length; i += 10) {
+                const currentBatch = i / 10 + 1;
+                const totalBatches = Math.ceil(itemIds.length / 10);
+                updateProgress(35 + (i / itemIds.length) * 25, 'Fetching Monday.com data', `Batch ${currentBatch}/${totalBatches}`);
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+
+            // Call your Lambda function instead of direct API
+
+            const lambdaUrl = '/.netlify/functions/monday';
+            const response = await fetch(`${lambdaUrl}?itemIds=${encodeURIComponent(JSON.stringify(itemIds))}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Monday.com Lambda error: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.errors) {
+                throw new Error(`Monday.com API errors: ${JSON.stringify(data.errors)}`);
+            }
+
+            const result = {};
+            const items = data.data?.items || [];
+
+            items.forEach(item => {
+                const itemId = item.id;
+                const itemName = item.name.replace(/[^\x00-\xFF]/g, '');
+
+                let storyPoint = '';
+                const columnValues = item.column_values || [];
+                if (columnValues.length > 0 && columnValues[0].value) {
+                    storyPoint = columnValues[0].value.replace(/"/g, '').replace(/[^\x00-\xFF]/g, '');
+                }
+
+                result[itemId] = {
+                    name: itemName,
+                    story_point: storyPoint
+                };
+            });
+
+            return result;
+        }
+
+        async function fetchAtlassianTicketsWithProgress(ticketIds, domain, email, token, startProgress) {
+            const result = {};
+            const progressStep = 25 / ticketIds.length;
+            const lambdaUrl = '/.netlify/functions/atlassian';
+
+            for (let i = 0; i < ticketIds.length; i++) {
+                const ticketId = ticketIds[i];
+                const currentProgress = startProgress + (i * progressStep);
+
+                updateProgress(
+                    Math.round(currentProgress),
+                    'Fetching Atlassian data',
+                    `${ticketId} (${i + 1}/${ticketIds.length})`
+                );
+
+                try {
+                    const response = await fetch(`${lambdaUrl}?ticketId=${ticketId}`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const summary = data.fields?.summary || `Ticket ${ticketId}`;
+                        result[ticketId] = summary.replace(/[^\x00-\xFF]/g, '');
+                    } else if (response.status === 404) {
+                        result[ticketId] = `Ticket ${ticketId} (Not Found)`;
+                    } else {
+                        result[ticketId] = `Ticket ${ticketId}`;
+                    }
+
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } catch (error) {
+                    console.warn(`Error fetching ${ticketId}:`, error);
+                    result[ticketId] = `Ticket ${ticketId}`;
+                }
+            }
+
             return result;
         }
 
