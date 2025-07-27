@@ -896,16 +896,14 @@
         }
 
         async function fetchMondayItemsWithProgress(itemIds, apiKey) {
-            // Progress simulation for batches
-            for (let i = 0; i < itemIds.length; i += 10) {
-                const currentBatch = i / 10 + 1;
-                const totalBatches = Math.ceil(itemIds.length / 10);
-                updateProgress(35 + (i / itemIds.length) * 25, 'Fetching Monday.com data', `Batch ${currentBatch}/${totalBatches}`);
+            // Progress simulation showing individual ticket IDs
+            for (let i = 0; i < itemIds.length; i++) {
+                const progress = 35 + (i / itemIds.length) * 25;
+                updateProgress(progress, 'Fetching Monday.com data', `${itemIds[i]} (${i + 1}/${itemIds.length})`);
                 await new Promise(resolve => setTimeout(resolve, 200));
             }
 
             // Call your Lambda function instead of direct API
-
             const lambdaUrl = '/.netlify/functions/monday';
             const response = await fetch(`${lambdaUrl}?itemIds=${encodeURIComponent(JSON.stringify(itemIds))}`, {
                 method: 'GET',
