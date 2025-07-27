@@ -20,9 +20,21 @@ exports.handler = async (event, context) => {
     };
   }
 
+  // Parse the itemIds array from URL parameter
+  let parsedItemIds;
+  try {
+    parsedItemIds = JSON.parse(decodeURIComponent(itemIds));
+  } catch (e) {
+    return {
+      statusCode: 400,
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify({ error: "Invalid itemIds format" })
+    };
+  }
+
   const query = `
     query {
-      items(ids: ${itemIds}) {
+      items(ids: ${JSON.stringify(parsedItemIds)}) {
         id
         name
         column_values(ids: ["numbers"]) {
@@ -58,11 +70,12 @@ exports.handler = async (event, context) => {
       });
     });
 
-    req.on('error', () => {
+    req.on('error', (error) => {
+      console.error('Monday.com API error:', error);
       resolve({
         statusCode: 500,
         headers: { "Access-Control-Allow-Origin": "*" },
-        body: JSON.stringify({ error: "Server error" })
+        body: JSON.stringify({ error: "Server error: " + error.message })
       });
     });
 

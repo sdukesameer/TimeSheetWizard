@@ -815,11 +815,13 @@
 
         // Monday.com API integration
         async function fetchMondayItems(itemIds) {
-            const url = `/.netlify/functions/monday?itemIds=${JSON.stringify(itemIds)}`;
+            const url = `/.netlify/functions/monday?itemIds=${encodeURIComponent(JSON.stringify(itemIds))}`;
 
             const response = await fetch(url);
 
             if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Monday API response:', errorText);
                 throw new Error(`Monday.com API error: ${response.status}`);
             }
 
