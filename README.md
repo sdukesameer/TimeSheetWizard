@@ -1,167 +1,197 @@
-# 🕒 Timesheet Processor & Visualizer
+# 🕒 TimeSheet Wizard
 
-A comprehensive solution for processing employee timesheet data with **Monday.com** and **Atlassian Jira** integration, featuring both local Python processing and web-based visualisation.
+**Automated timesheet processing and visualization tool with Monday.com & Atlassian integration**
 
-## 🌟 Two Ways to Use
+## ✨ Features
 
-### 1. **Local Processing** (Python Script)
-- Download and configure the Python script locally
-- Process raw timesheet files with full API integration
-- Generate consolidated CSV reports
-- Ideal for batch processing and automation
+- **🔄 Automated Processing**: Converts raw timesheet data into consolidated reports
+- **🎯 Smart Ticket Recognition**: Extracts Monday.com IDs and Atlassian tickets from comments
+- **📊 Rich Visualizations**: Interactive charts showing hours distribution by employee, task, and ticket source
+- **🔐 Secure API Integration**: Server-side credential management via Netlify Functions
+- **📱 Responsive Design**: Works seamlessly on desktop and mobile devices
+- **📈 Real-time Analytics**: Instant statistics and insights from your timesheet data
 
-### 2. **Web Visualizer** (GitHub Pages)
-- Access the web app directly in your browser
-- Upload either raw timesheets OR pre-consolidated reports
-- Interactive charts and visualisations
-- No installation required
+## 🚀 Quick Start
 
----
+1. **Visit the App**: Go to [timesheetwizard.netlify.app](https://timesheetwizard.netlify.app/)
+2. **Upload File**: Click "Choose Timesheet File" and select your `.xlsx` or consolidated `.csv` file
+3. **Process**: Click "🚀 Process & Visualize"
+4. **Analyze**: View charts, statistics, and download consolidated reports
 
-## 🚀 Getting Started
+## 📋 Supported File Formats
 
-### Option A: Local Python Processing
+### Input Files
+- **Excel Files (.xlsx)**: Raw timesheet exports from Monday.com or similar platforms
+- **CSV Files (.csv)**: Must be named with `Consolidated_Report` for visualization-only mode
 
-1. **Download the Python script**: `timesheet_processor.py`
-2. **Install requirements**:
-   ```bash
-   pip install pandas requests openpyxl
-   ```
-3. **Configure API credentials** in the script:
-   ```python
-   monday_api_key = "YOUR_MONDAY_API_KEY"
-   atlassian_config = {
-       "domain": "your-domain.atlassian.net",
-       "email": "your-email@domain.com", 
-       "api_token": "YOUR_ATLASSIAN_API_TOKEN"
-   }
-   ```
-4. **Run processing**:
-   ```bash
-   python timesheet_processor.py your_timesheet.csv
-   ```
+### Expected Columns
+- `Employee Name` / `Name` / `Worker`
+- `Task` / `Task Type` / `Activity`
+- `Total Hours` / `Hours` / `Duration`
+- `Comments` / `Description` / `Notes`
+- `Task Billing Type` (optional - filters for "Billable" entries)
 
-### Option B: Web Visualizer
+## 🎯 Ticket Recognition
 
-1. **Access the web app**: [🔗 [Timesheet Processor & Visualizer](https://md-sameer-ck.github.io/TimeSheetWizard/)]
-2. **Upload your file**:
-   - Raw timesheet (Excel) → Full processing with API calls
-   - Consolidated report (CSV) → Direct visualisation
-3. **Configure APIs** (optional): Click "Configure API Settings"
-4. **Visualise**: Interactive charts, statistics, and data tables
+The system automatically extracts and processes:
 
----
+- **Monday.com Items**: 10-digit IDs (e.g., `1234567890`)
+- **Atlassian Tickets**: OPS format (e.g., `OPS-123`, `OPS 456`)
 
-## 📊 Features
+Extracted tickets are enriched with:
+- **Monday.com**: Item names and story points
+- **Atlassian**: Ticket summaries and status
 
-### **Data Processing**
-- ✅ Supports Excel (.xlsx) files
-- 🔍 Extracts Monday.com IDs (10-digit) and Atlassian tickets (OPS-XXX)
-- 📊 Fetches ticket details via API (names, story points)
-- 🧠 Intelligent grouping and hour distribution
-- 📁 Generates clean consolidated reports
+## 📊 Generated Outputs
 
-### **Web Visualization** 
-- 📈 Interactive charts (Bar, Pie, Doughnut)
-- 👥 Employee hours distribution
-- 📋 Task type breakdown  
-- 🎫 Ticket source analysis
-- 📥 Export options (CSV/JSON)
+### Visualizations
+- **Employee Hours Distribution**: Bar/Pie/Doughnut charts
+- **Task Type Breakdown**: Hours by activity type
+- **Ticket Source Analysis**: Monday.com vs Atlassian vs Manual
+- **Top Tickets**: Highest hour consumers
 
-### **Smart File Detection**
-- Raw timesheets → Full API processing
-- Files with `Consolidated_Report` → Direct visualization
-- Automatic workflow selection
+### Reports
+- **Consolidated CSV**: Processed data with ticket information
+- **JSON Export**: Raw data with processing metadata
+- **Interactive Table**: Top 50 entries with search/sort
 
----
+## 🛠️ Technical Architecture
 
-## 📂 Input Formats
+### Frontend
+- **Pure HTML/CSS/JS**: No framework dependencies
+- **Chart.js**: Interactive data visualizations
+- **PapaParse**: CSV processing
+- **SheetJS**: Excel file parsing
 
-### Raw Timesheet Requirements:
-- **Employee Name** (or Name, Worker, Employee)
-- **Task** (or Task Type, Activity, Work Type) 
-- **Total Hours** (or Hours, Time Spent, Duration)
-- **Comments** (or Description, Notes)
-- **Billing Type** (optional - filters for 'Billable' only)
+### Backend (Netlify Functions)
+- **Monday.com Integration**: GraphQL API for item details
+- **Atlassian Integration**: REST API for ticket information
+- **Secure Credentials**: Environment variable storage
+- **CORS Handling**: Cross-origin request management
 
-### Consolidated Report Format:
-Generated files contain: Task, Ticket ID, Ticket Name, Story Point, Logged Hours, Consolidated Comments, Employees Involved, Ticket Source
+## 🔐 Security & Privacy
 
----
+- **No Client-side Credentials**: All API keys stored securely on server
+- **No Data Storage**: Files processed in-memory only
+- **HTTPS Only**: Encrypted data transmission
+- **No Tracking**: No analytics or user data collection
 
-## 🔧 API Configuration
+## 🔧 Development Setup
 
-### Monday.com:
-- Generate an API key from Monday.com developer settings
-- GraphQL endpoint for item details and story points
+### Prerequisites
+- Node.js 18+
+- Netlify CLI (for local development)
 
-### Atlassian Jira:
-- Create an API token from Atlassian account settings  
-- REST API for ticket summaries
-- Requires domain, email, and token
+### Local Development
+```bash
+# Clone repository
+git clone https://github.com/md-sameer-ck/TimeSheetWizard.git
+cd TimeSheetWizard
 
----
+# Install Netlify CLI
+npm install -g netlify-cli
 
-## 📤 Output Examples
+# Set up environment variables
+# Create .env file with:
+# MONDAY_API_KEY=your_monday_api_key
+# ATLASSIAN_DOMAIN=your-domain.atlassian.net
+# ATLASSIAN_EMAIL=your-email@domain.com
+# ATLASSIAN_TOKEN=your_atlassian_token
 
-### Console Output:
-```
-=== Processing Complete ===
-Original records: 68
-Consolidated records: 23  
-Original total hours: 143.75
-Consolidated total hours: 143.75
-Output: timesheet_Consolidated_Report.csv
+# Start development server
+netlify dev
 ```
 
-### Web Statistics:
-- Total Hours: 143.75
-- Employees: 8
-- Task Types: 12
-- Tickets Processed: 15
+### Environment Variables
+Configure these in Netlify Dashboard → Site Settings → Environment Variables:
 
----
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MONDAY_API_KEY` | Monday.com API token | `eyJhbGciOiJ...` |
+| `ATLASSIAN_DOMAIN` | Atlassian instance domain | `company.atlassian.net` |
+| `ATLASSIAN_EMAIL` | Atlassian account email | `user@company.com` |
+| `ATLASSIAN_TOKEN` | Atlassian API token | `ATATT3xFfGF0...` |
 
-## 🛠️ Use Cases
+## 📁 Project Structure
 
-### **Local Python Script**:
-- **Batch processing** multiple files
-- **Automated workflows** and scheduling
-- **Enterprise integration** with existing systems
-- **Offline processing** of sensitive data
+```
+TimeSheetWizard/
+├── index.html              # Main application
+├── netlify.toml            # Netlify configuration
+├── netlify/
+│   └── functions/
+│       ├── monday.js       # Monday.com API integration
+│       └── atlassian.js    # Atlassian API integration
+└── README.md               # Documentation
+```
 
-### **Web Visualizer**:
-- **Quick analysis** and reporting
-- **Stakeholder presentations** with interactive charts
-- **Remote access** without software installation
-- **Collaborative review** of processed data
+## 🔄 Data Processing Flow
 
----
+1. **File Upload**: User selects Excel or CSV file
+2. **Column Normalization**: Maps various column names to standard format
+3. **Data Filtering**: Removes non-billable entries
+4. **Ticket Extraction**: Regex parsing for Monday.com IDs and OPS tickets
+5. **API Enrichment**: Fetches ticket details from respective APIs
+6. **Consolidation**: Groups entries by ticket and calculates totals
+7. **Visualization**: Generates charts and statistics
+8. **Export**: Provides downloadable reports
 
-## 🔒 Security Notes
+## 🎨 Customization
 
-- **Local script**: API credentials stored in a local file
-- **Web app**: Credentials only in browser memory (not stored)
-- **CORS limitations**: Some API calls may require a proxy for the web version
-- **Data privacy**: Web processing happens client-side only
+### Chart Types
+- Bar Charts (default)
+- Pie Charts
+- Doughnut Charts
 
----
+### Color Schemes
+Predefined 15-color palette with automatic cycling for large datasets.
 
-## 📈 Example Workflow
+### Responsive Breakpoints
+- Desktop: 1400px max-width
+- Tablet: 768px breakpoint
+- Mobile: Optimized layouts
 
-1. **Local Processing**: Use Python script to process raw timesheets → Generate `timesheet_Consolidated_Report.csv`
-2. **Web Visualization**: Upload consolidated report to web app → Generate interactive charts for presentations
-3. **Hybrid Approach**: Process locally for sensitive data, visualise online for sharing
+## 🐛 Troubleshooting
 
----
+### Common Issues
+
+**File Processing Errors**
+- Ensure file contains required columns
+- Check for billable entries only
+- Verify Excel files start data from row 3
+
+**API Integration Issues**
+- Confirm environment variables are set
+- Check API token permissions
+- Verify domain format (no https://)
+
+**Missing Visualizations**
+- Ensure processed data contains valid entries
+- Check browser console for errors
+- Try different chart types
+
+## 📈 Performance
+
+- **File Size**: Handles up to 10MB Excel files
+- **Processing Speed**: ~1000 records/second
+- **API Limits**: Respects Monday.com and Atlassian rate limits
+- **Browser Compatibility**: Modern browsers (Chrome 80+, Firefox 75+, Safari 13+)
 
 ## 🤝 Contributing
 
-- Report issues with sample data (anonymised)
-- Feature requests welcome
-- API integration improvements
-- Chart and visualisation enhancements
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/improvement`)
+3. Commit changes (`git commit -am 'Add improvement'`)
+4. Push to branch (`git push origin feature/improvement`)
+5. Open Pull Request
+
+
+## 🙋‍♂️ Support
+
+- **Issues**: [GitHub Issues](https://github.com/md-sameer-ck/TimeSheetWizard/issues)
+- **Email**: [md.sameer.ck@gmail.com](mailto:md.sameer@cloudkaptan.com)
+- **Documentation**: This README and inline code comments
 
 ---
 
-Built with ❤️ by Md Sameer for efficient timesheet management and visualisation.
+**Made with ❤️ by [Md Sameer](https://github.com/md-sameer-ck)**
