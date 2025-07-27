@@ -1,42 +1,52 @@
 const https = require('https');
 
 exports.handler = async (event, context) => {
-  const { ticketId } = event.queryStringParameters;
+  const { itemIds } = event.queryStringParameters;
 
-  if (!ticketId) {
+  if (!itemIds) {
     return {
       statusCode: 400,
       headers: { "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify({ error: "Missing ticketId parameter" })
+      body: JSON.stringify({ error: "Missing itemIds parameter" })
     };
   }
 
-  // Use environment variables instead of passing credentials
-  const domain = process.env.ATLASSIAN_DOMAIN;
-  const email = process.env.ATLASSIAN_EMAIL;
-  const token = process.env.ATLASSIAN_TOKEN;
-
-  if (!domain || !email || !token) {
+  const apiKey = process.env.MONDAY_API_KEY;
+  if (!apiKey) {
     return {
       statusCode: 500,
       headers: { "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify({ error: "Server configuration error" })
+      body: JSON.stringify({ error: "Monday.com API key not configured" })
     };
   }
 
-  return new Promise((resolve) => {
-    const url = `https://${domain}/rest/api/3/issue/${ticketId}`;
-    const auth = Buffer.from(`${email}:${token}`).toString('base64');
+  const query = `
+    query {
+      items(ids: ${itemIds}) {
+        id
+        name
+        column_values(ids: ["numbers"]) {
+          value
+        }
+      }
+    }
+  `;
 
+  const postData = JSON.stringify({ query });
+
+  return new Promise((resolve) => {
     const options = {
-      method: 'GET',
+      hostname: 'api.monday.com',
+      path: '/v2',
+      method: 'POST',
       headers: {
-        'Authorization': `Basic ${auth}`,
-        'Accept': 'application/json'
+        'Authorization': apiKey,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
       }
     };
 
-    const req = https.request(url, options, (res) => {
+    const req = https.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
@@ -56,6 +66,7 @@ exports.handler = async (event, context) => {
       });
     });
 
+    req.write(postData);
     req.end();
   });
 };

@@ -377,40 +377,6 @@
             <a href="https://github.com/md-sameer-ck/TimeSheetWizard/blob/main/README.md" target="_blank" style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 20px; font-size: 14px; backdrop-filter: blur(10px);">📖 Documentation & Help</a>
         </div>
 
-        <!-- Configuration Panel -->
-        <div class="config-panel">
-            <button class="toggle-config" onclick="toggleConfig()">⚙️ Configure API Settings</button>
-            <div id="configSection" class="hidden">
-                <div class="config-section">
-                    <h3>Monday.com Configuration</h3>
-                    <div class="config-grid">
-                        <div class="input-group">
-                            <label for="mondayApiKey">API Key:</label>
-                            <input type="text" id="mondayApiKey" placeholder="Your Monday.com API key">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="config-section">
-                    <h3>Atlassian Configuration</h3>
-                    <div class="config-grid">
-                        <div class="input-group">
-                            <label for="atlassianDomain">Domain:</label>
-                            <input type="text" id="atlassianDomain" placeholder="your-domain.atlassian.net">
-                        </div>
-                        <div class="input-group">
-                            <label for="atlassianEmail">Email:</label>
-                            <input type="email" id="atlassianEmail" placeholder="your-email@example.com">
-                        </div>
-                        <div class="input-group">
-                            <label for="atlassianToken">API Token:</label>
-                            <input type="text" id="atlassianToken" placeholder="Your Atlassian API token">
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- File Upload Panel -->
         <div class="controls-panel">
             <div class="file-input-wrapper">
@@ -504,10 +470,10 @@
         let charts = {};
 
         // Configuration management
-        function toggleConfig() {
-            const configSection = document.getElementById('configSection');
-            configSection.classList.toggle('hidden');
-        }
+        // function toggleConfig() {
+        //     const configSection = document.getElementById('configSection');
+        //     configSection.classList.toggle('hidden');
+        // }
 
         // Utility functions
         function showError(message) {
@@ -821,111 +787,37 @@
 
         // API data fetching
         async function fetchAPIData(ticketInfo) {
-        const mondayData = {};
-        const atlassianData = {};
+            const mondayData = {};
+            const atlassianData = {};
 
-        // Get API credentials
-        const mondayApiKey = document.getElementById('mondayApiKey').value;
-        const atlassianDomain = document.getElementById('atlassianDomain').value;
-        const atlassianEmail = document.getElementById('atlassianEmail').value;
-        const atlassianToken = document.getElementById('atlassianToken').value;
-
-        const totalTickets = ticketInfo.mondayIds.length + ticketInfo.opsTickets.length;
-        let processedTickets = 0;
-
-        // Fetch Monday.com data
-        if (mondayApiKey && ticketInfo.mondayIds.length > 0) {
-            try {
-                updateProgress(55, `Fetching ${ticketInfo.mondayIds.length} Monday.com tickets...`);
-                const mondayResult = await fetchMondayItems(ticketInfo.mondayIds, mondayApiKey);
-                Object.assign(mondayData, mondayResult);
-                processedTickets += ticketInfo.mondayIds.length;
-                updateProgress(55 + (processedTickets / totalTickets) * 10, `Monday.com data retrieved`);
-            } catch (error) {
-                console.warn('Monday.com API error:', error);
-                updateProgress(55 + (processedTickets / totalTickets) * 10, `Monday.com API failed - continuing...`);
-            }
-        }
-
-        // Fetch Atlassian data with individual ticket progress
-        if (atlassianDomain && atlassianEmail && atlassianToken && ticketInfo.opsTickets.length > 0) {
-            try {
-                updateProgress(60, `Fetching ${ticketInfo.opsTickets.length} Atlassian tickets...`);
-
-                // Process tickets individually for better progress tracking
-                for (let i = 0; i < ticketInfo.opsTickets.length; i++) {
-                    const ticketId = ticketInfo.opsTickets[i];
-                    const progress = 60 + ((i + 1) / ticketInfo.opsTickets.length) * 8;
-
-                    updateProgress(progress, `Fetching ${ticketId} (${i + 1}/${ticketInfo.opsTickets.length})`);
-
-                    try {
-                        const url = `https://${atlassianDomain}/rest/api/3/issue/${ticketId}`;
-                        const response = await fetch(url, {
-                            method: 'GET',
-                            headers: {
-                                'Authorization': 'Basic ' + btoa(`${atlassianEmail}:${atlassianToken}`),
-                                'Accept': 'application/json'
-                            }
-                        });
-
-                        if (response.ok) {
-                            const issueData = await response.json();
-                            const summary = issueData.fields?.summary || `Ticket ${ticketId}`;
-                            atlassianData[ticketId] = summary.replace(/[^\x00-\xFF]/g, '');
-                            updateProgress(progress, `✓ ${ticketId}: ${summary.substring(0, 30)}...`);
-                        } else if (response.status === 404) {
-                            atlassianData[ticketId] = `Ticket ${ticketId} (Not Found)`;
-                            updateProgress(progress, `⚠ ${ticketId}: Not found`);
-                        } else {
-                            atlassianData[ticketId] = `Ticket ${ticketId}`;
-                            updateProgress(progress, `⚠ ${ticketId}: API error`);
-                        }
-                    } catch (error) {
-                        console.warn(`Error fetching ${ticketId}:`, error);
-                        atlassianData[ticketId] = `Ticket ${ticketId}`;
-                        updateProgress(progress, `✗ ${ticketId}: Network error`);
-                    }
-
-                    // Small delay to show progress
-                    await new Promise(resolve => setTimeout(resolve, 100));
+            // Fetch Monday.com data (using server-side API)
+            if (ticketInfo.mondayIds.length > 0) {
+                try {
+                    const mondayResult = await fetchMondayItems(ticketInfo.mondayIds);
+                    Object.assign(mondayData, mondayResult);
+                } catch (error) {
+                    console.warn('Monday.com API error:', error);
                 }
-
-            } catch (error) {
-                console.warn('Atlassian API error:', error);
-                updateProgress(68, 'Atlassian API failed - continuing...');
             }
-        }
 
-        if (totalTickets === 0) {
-            updateProgress(65, 'No API tickets found - using manual entries');
-        }
+            // Fetch Atlassian data (using server-side API)
+            if (ticketInfo.opsTickets.length > 0) {
+                try {
+                    const atlassianResult = await fetchAtlassianTickets(ticketInfo.opsTickets);
+                    Object.assign(atlassianData, atlassianResult);
+                } catch (error) {
+                    console.warn('Atlassian API error:', error);
+                }
+            }
 
-        return { mondayData, atlassianData };
-    }
+            return { mondayData, atlassianData };
+        }
 
         // Monday.com API integration
-        async function fetchMondayItems(itemIds, apiKey) {
-            const query = `
-                query {
-                    items(ids: ${JSON.stringify(itemIds)}) {
-                        id
-                        name
-                        column_values(ids: ["numbers"]) {
-                            value
-                        }
-                    }
-                }
-            `;
+        async function fetchMondayItems(itemIds) {
+            const url = `/.netlify/functions/monday?itemIds=${JSON.stringify(itemIds)}`;
 
-            const response = await fetch('https://api.monday.com/v2', {
-                method: 'POST',
-                headers: {
-                    'Authorization': apiKey,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ query })
-            });
+            const response = await fetch(url);
 
             if (!response.ok) {
                 throw new Error(`Monday.com API error: ${response.status}`);
@@ -942,7 +834,7 @@
 
             items.forEach(item => {
                 const itemId = item.id;
-                const itemName = item.name.replace(/[^\x00-\xFF]/g, ''); // Remove emojis
+                const itemName = item.name.replace(/[^\x00-\xFF]/g, '');
 
                 let storyPoint = '';
                 const columnValues = item.column_values || [];
@@ -960,14 +852,14 @@
         }
 
         // Atlassian API integration
-        async function fetchAtlassianTickets(ticketIds, domain, email, token) {
+        async function fetchAtlassianTickets(ticketIds) {
             const result = {};
 
             for (const ticketId of ticketIds) {
                 try {
-                    const url = `/.netlify/functions/atlassian?domain=${encodeURIComponent(domain)}&ticketId=${encodeURIComponent(ticketId)}&email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+                    const url = `/.netlify/functions/atlassian?ticketId=${encodeURIComponent(ticketId)}`;
                     const response = await fetch(url);
-                    
+
                     if (response.ok) {
                         const issueData = await response.json();
                         const summary = issueData.fields?.summary || `Ticket ${ticketId}`;
