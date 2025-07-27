@@ -189,7 +189,7 @@ Predefined 15-color palette with automatic cycling for large datasets.
 ## 🙋‍♂️ Support
 
 - **Issues**: [GitHub Issues](https://github.com/md-sameer-ck/TimeSheetWizard/issues)
-- **Email**: [md.sameer.ck@gmail.com](mailto:md.sameer@cloudkaptan.com)
+- **Email**: [md.sameer@cloudkaptan.com](mailto:md.sameer@cloudkaptan.com)
 - **Documentation**: This README and inline code comments
 
 ---
