@@ -965,32 +965,16 @@
         
             for (const ticketId of ticketIds) {
                 try {
-                    const originalUrl = `https://${domain}/rest/api/3/issue/${ticketId}`;
-                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(originalUrl)}`;
+                    const url = `/.netlify/functions/atlassian?domain=${encodeURIComponent(domain)}&ticketId=${encodeURIComponent(ticketId)}&email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
         
-                    const response = await fetch(proxyUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            url: originalUrl,
-                            headers: {
-                                'Authorization': 'Basic ' + btoa(`${email}:${token}`),
-                                'Accept': 'application/json'
-                            }
-                        })
-                    });
-        
+                    const response = await fetch(url);
+                    
                     if (response.ok) {
-                        const proxyData = await response.json();
-                        if (proxyData.contents) {
-                            const issueData = JSON.parse(proxyData.contents);
-                            const summary = issueData.fields?.summary || `Ticket ${ticketId}`;
-                            result[ticketId] = summary.replace(/[^\x00-\xFF]/g, '');
-                        } else {
-                            result[ticketId] = `Ticket ${ticketId}`;
-                        }
+                        const issueData = await response.json();
+                        const summary = issueData.fields?.summary || `Ticket ${ticketId}`;
+                        result[ticketId] = summary.replace(/[^\x00-\xFF]/g, '');
+                    } else if (response.status === 404) {
+                        result[ticketId] = `Ticket ${ticketId} (Not Found)`;
                     } else {
                         result[ticketId] = `Ticket ${ticketId}`;
                     }
