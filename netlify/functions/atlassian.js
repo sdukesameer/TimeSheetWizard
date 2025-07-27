@@ -8,7 +8,8 @@ exports.handler = async (event, context) => {
       statusCode: 400,
       headers: { 
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type"
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Methods": "*"
       },
       body: JSON.stringify({ error: "Missing parameters" })
     };
