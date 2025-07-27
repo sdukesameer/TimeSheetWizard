@@ -790,15 +790,17 @@
             const mondayData = {};
             const atlassianData = {};
 
-            const mondayApiKey = document.getElementById('mondayApiKey').value;
-            const atlassianDomain = document.getElementById('atlassianDomain').value;
-            const atlassianEmail = document.getElementById('atlassianEmail').value;
-            const atlassianToken = document.getElementById('atlassianToken').value;
+            // Since you're using Lambda functions, these might not be needed
+            // But keeping them for backwards compatibility
+            const mondayApiKey = document.getElementById('mondayApiKey')?.value || '';
+            const atlassianDomain = document.getElementById('atlassianDomain')?.value || '';
+            const atlassianEmail = document.getElementById('atlassianEmail')?.value || '';
+            const atlassianToken = document.getElementById('atlassianToken')?.value || '';
 
             let currentProgress = 35;
 
-            // Fetch Monday.com data
-            if (mondayApiKey && ticketInfo.mondayIds.length > 0) {
+            // Fetch Monday.com data - now uses Lambda so API key check is optional
+            if (ticketInfo.mondayIds.length > 0) {
                 try {
                     updateProgress(currentProgress, 'Fetching Monday.com data', `Processing ${ticketInfo.mondayIds.length} items`);
 
@@ -810,8 +812,8 @@
                 }
             }
 
-            // Fetch Atlassian data
-            if (atlassianDomain && atlassianEmail && atlassianToken && ticketInfo.opsTickets.length > 0) {
+            // Fetch Atlassian data - now uses Lambda so credential checks are optional
+            if (ticketInfo.opsTickets.length > 0) {
                 try {
                     const atlassianResult = await fetchAtlassianTicketsWithProgress(
                         ticketInfo.opsTickets,
@@ -882,8 +884,6 @@
                         const issueData = await response.json();
                         const summary = issueData.fields?.summary || `Ticket ${ticketId}`;
                         result[ticketId] = summary.replace(/[^\x00-\xFF]/g, '');
-                    } else if (response.status === 404) {
-                        result[ticketId] = `Ticket ${ticketId} (Not Found)`;
                     } else {
                         result[ticketId] = `Ticket ${ticketId}`;
                     }
@@ -973,8 +973,6 @@
                         const data = await response.json();
                         const summary = data.fields?.summary || `Ticket ${ticketId}`;
                         result[ticketId] = summary.replace(/[^\x00-\xFF]/g, '');
-                    } else if (response.status === 404) {
-                        result[ticketId] = `Ticket ${ticketId} (Not Found)`;
                     } else {
                         result[ticketId] = `Ticket ${ticketId}`;
                     }
