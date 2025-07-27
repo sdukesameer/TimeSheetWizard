@@ -962,11 +962,10 @@
         // Atlassian API integration
         async function fetchAtlassianTickets(ticketIds, domain, email, token) {
             const result = {};
-        
+
             for (const ticketId of ticketIds) {
                 try {
                     const url = `/.netlify/functions/atlassian?domain=${encodeURIComponent(domain)}&ticketId=${encodeURIComponent(ticketId)}&email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
-        
                     const response = await fetch(url);
                     
                     if (response.ok) {
@@ -983,7 +982,6 @@
                     result[ticketId] = `Ticket ${ticketId}`;
                 }
             }
-        
             return result;
         }
 
