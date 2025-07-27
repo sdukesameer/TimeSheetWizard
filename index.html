@@ -962,25 +962,35 @@
         // Atlassian API integration
         async function fetchAtlassianTickets(ticketIds, domain, email, token) {
             const result = {};
-
+        
             for (const ticketId of ticketIds) {
                 try {
-                    const url = `https://${domain}/rest/api/3/issue/${ticketId}`;
-
-                    const response = await fetch(url, {
-                        method: 'GET',
+                    const originalUrl = `https://${domain}/rest/api/3/issue/${ticketId}`;
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(originalUrl)}`;
+        
+                    const response = await fetch(proxyUrl, {
+                        method: 'POST',
                         headers: {
-                            'Authorization': 'Basic ' + btoa(`${email}:${token}`),
-                            'Accept': 'application/json'
-                        }
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            url: originalUrl,
+                            headers: {
+                                'Authorization': 'Basic ' + btoa(`${email}:${token}`),
+                                'Accept': 'application/json'
+                            }
+                        })
                     });
-
+        
                     if (response.ok) {
-                        const issueData = await response.json();
-                        const summary = issueData.fields?.summary || `Ticket ${ticketId}`;
-                        result[ticketId] = summary.replace(/[^\x00-\xFF]/g, '');
-                    } else if (response.status === 404) {
-                        result[ticketId] = `Ticket ${ticketId} (Not Found)`;
+                        const proxyData = await response.json();
+                        if (proxyData.contents) {
+                            const issueData = JSON.parse(proxyData.contents);
+                            const summary = issueData.fields?.summary || `Ticket ${ticketId}`;
+                            result[ticketId] = summary.replace(/[^\x00-\xFF]/g, '');
+                        } else {
+                            result[ticketId] = `Ticket ${ticketId}`;
+                        }
                     } else {
                         result[ticketId] = `Ticket ${ticketId}`;
                     }
@@ -989,7 +999,7 @@
                     result[ticketId] = `Ticket ${ticketId}`;
                 }
             }
-
+        
             return result;
         }
 
