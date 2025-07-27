@@ -71,15 +71,6 @@
             margin-bottom: 30px;
         }
 
-        .config-panel, .controls-panel {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 30px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-        }
-
         .config-section {
             margin-bottom: 25px;
         }
@@ -566,7 +557,6 @@
                         showSuccess(`Loaded consolidated report with ${processedData.length} entries!`);
 
                         // Hide API config and download section for consolidated reports
-                        document.querySelector('.config-panel').style.display = 'none';
                         document.getElementById('downloadSection').classList.add('hidden');
                         document.getElementById('statsPanel').classList.remove('hidden');
                         document.getElementById('chartsContainer').classList.remove('hidden');
@@ -596,7 +586,6 @@
                         showSuccess(`Successfully processed ${rawData.length} records into ${processedData.length} consolidated entries!`);
 
                         // Hide API config panel after processing and show all results
-                        document.querySelector('.config-panel').style.display = 'none';
                         document.getElementById('downloadSection').classList.remove('hidden');
                         document.getElementById('statsPanel').classList.remove('hidden');
                         document.getElementById('chartsContainer').classList.remove('hidden');
