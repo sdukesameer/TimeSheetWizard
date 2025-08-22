@@ -71,29 +71,13 @@
             margin-bottom: 30px;
         }
 
-        .config-panel {
+        .config-panel, .controls-panel {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border-radius: 15px;
             padding: 25px;
             margin-bottom: 30px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-        }
-
-        .controls-panel {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 30px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            display: flex;
-            gap: 20px;
-            align-items: center;
-        }
-
-        .controls-panel > * {
-            flex: 1;
         }
 
         .config-section {
@@ -179,14 +163,6 @@
             cursor: pointer;
             transition: all 0.3s ease;
             font-weight: 500;
-            text-align: center;
-            width: 100%;
-            box-sizing: border-box;
-        }
-
-        .file-input-wrapper {
-            flex: 2;
-            margin: 0;
         }
 
         .file-input-label:hover {
@@ -196,7 +172,7 @@
 
         select, button {
             padding: 12px 20px;
-            margin: 0; /* Changed from 10px */
+            margin: 10px;
             border: none;
             border-radius: 25px;
             font-size: 14px;
@@ -390,11 +366,6 @@
             .config-grid {
                 grid-template-columns: 1fr;
             }
-
-            .controls-panel {
-                grid-template-columns: 1fr !important;
-                gap: 15px !important;
-            }
         }
     </style>
 </head>
@@ -408,23 +379,18 @@
 
         <!-- File Upload Panel -->
         <div class="controls-panel">
-            <div class="file-input-wrapper" style="margin: 0;">
+            <div class="file-input-wrapper">
                 <input type="file" id="fileInput" accept=".csv,.xlsx">
                 <label for="fileInput" class="file-input-label">📁 Choose Timesheet File (.csv or .xlsx)</label>
             </div>
 
-            <select id="chartType" class="hidden" style="width: 100%; text-align: center;">
+            <select id="chartType">
                 <option value="bar">📊 Bar Charts</option>
+                <option value="pie">🥧 Pie Charts</option>
                 <option value="doughnut">🍩 Doughnut Charts</option>
-                <option value="polarArea">⭕ Polar Area</option>
-                <option value="radar">🎯 Radar Charts</option>
             </select>
 
-            <select id="resourceFilter" class="hidden" style="width: 100%; text-align: center;">
-                <option value="all">👥 All Employees</option>
-            </select>
-
-            <button id="processButton" onclick="processTimesheet()" style="margin: 0; width: 100%; text-align: center;">🚀 Process & Visualize</button>
+            <button id="processButton" onclick="processTimesheet()">🚀 Process & Visualize</button>
         </div>
 
         <!-- Processing Panel -->
@@ -545,70 +511,6 @@
             document.getElementById('processingPanel').style.display = 'none';
         }
 
-        // Add after hideProcessing() calls in processTimesheet function
-        function showControlsAfterProcessing() {
-            document.getElementById('resourceFilter').classList.remove('hidden');
-            document.getElementById('chartType').classList.remove('hidden');
-            populateResourceFilter();
-        }
-
-        function populateResourceFilter() {
-            const resourceFilter = document.getElementById('resourceFilter');
-            const uniqueEmployees = new Set();
-
-            processedData.forEach(row => {
-                if (row['Employees Involved']) {
-                    const employees = row['Employees Involved'].split(',');
-                    employees.forEach(emp => {
-                        const employee = emp.trim();
-                        if (employee) uniqueEmployees.add(employee);
-                    });
-                }
-            });
-
-            // Clear existing options except "All Employees"
-            resourceFilter.innerHTML = '<option value="all">👥 All Employees</option>';
-
-            // Add employee options
-            Array.from(uniqueEmployees).sort().forEach(employee => {
-                const option = document.createElement('option');
-                option.value = employee;
-                option.textContent = `👤 ${employee}`;
-                resourceFilter.appendChild(option);
-            });
-        }
-
-        // Add event listener for resource filter
-        document.getElementById('resourceFilter').addEventListener('change', function() {
-            if (processedData) {
-                filterDataAndRefresh();
-            }
-        });
-
-        function filterDataAndRefresh() {
-            const selectedResource = document.getElementById('resourceFilter').value;
-
-            let filteredData = processedData;
-
-            if (selectedResource !== 'all') {
-                filteredData = processedData.filter(row => {
-                    const employees = row['Employees Involved'] || '';
-                    return employees.includes(selectedResource);
-                });
-            }
-
-            // Temporarily replace processedData for visualization
-            const originalData = processedData;
-            processedData = filteredData;
-
-            updateStatistics();
-            createCharts();
-            createDataTable();
-
-            // Restore original data
-            processedData = originalData;
-        }
-
         // File handling
         document.getElementById('fileInput').addEventListener('change', function() {
             const fileName = this.files[0]?.name || '';
@@ -665,7 +567,6 @@
                     setTimeout(() => {
                         hideProcessing();
                         showSuccess(`Loaded consolidated report with ${processedData.length} entries!`);
-                        showControlsAfterProcessing(); // Add this line
                         document.getElementById('downloadSection').classList.add('hidden');
                         document.getElementById('statsPanel').classList.remove('hidden');
                         document.getElementById('chartsContainer').classList.remove('hidden');
@@ -696,7 +597,6 @@
                     setTimeout(() => {
                         hideProcessing();
                         showSuccess(`Successfully processed ${rawData.length} records into ${processedData.length} consolidated entries!`);
-                        showControlsAfterProcessing(); // Add this line
                         document.getElementById('downloadSection').classList.remove('hidden');
                         document.getElementById('statsPanel').classList.remove('hidden');
                         document.getElementById('chartsContainer').classList.remove('hidden');
@@ -1338,8 +1238,7 @@
             if (sortedEmployees.length === 0) return;
 
             const ctx = document.getElementById('employeeChart').getContext('2d');
-
-            let chartConfig = {
+            charts.employee = new Chart(ctx, {
                 type: chartType,
                 data: {
                     labels: sortedEmployees.map(([name]) => name),
@@ -1358,43 +1257,18 @@
                         legend: {
                             display: chartType !== 'bar'
                         }
-                    }
-                }
-            };
-
-            if (chartType === 'bar') {
-                chartConfig.options.scales = {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Hours'
+                    },
+                    scales: chartType === 'bar' ? {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Hours'
+                            }
                         }
-                    }
-                };
-            } else if (chartType === 'line') {
-                chartConfig.data.datasets[0] = {
-                    label: 'Hours',
-                    data: sortedEmployees.map(([,hours]) => hours),
-                    borderColor: '#667eea',
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    fill: true,
-                    tension: 0.4
-                };
-                chartConfig.options.scales = {
-                    y: { beginAtZero: true }
-                };
-            } else if (chartType === 'radar') {
-                chartConfig.data.datasets[0] = {
-                    label: 'Hours',
-                    data: sortedEmployees.map(([,hours]) => hours),
-                    borderColor: '#667eea',
-                    backgroundColor: 'rgba(102, 126, 234, 0.2)',
-                    pointBackgroundColor: '#667eea'
-                };
-            }
-
-            charts.employee = new Chart(ctx, chartConfig);
+                    } : {}
+                }
+            });
         }
 
         function createTaskChart(chartType) {
@@ -1412,8 +1286,7 @@
             if (sortedTasks.length === 0) return;
 
             const ctx = document.getElementById('taskChart').getContext('2d');
-
-            let chartConfig = {
+            charts.task = new Chart(ctx, {
                 type: chartType,
                 data: {
                     labels: sortedTasks.map(([name]) => name),
@@ -1432,43 +1305,18 @@
                         legend: {
                             display: chartType !== 'bar'
                         }
-                    }
-                }
-            };
-
-            if (chartType === 'bar') {
-                chartConfig.options.scales = {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Hours'
+                    },
+                    scales: chartType === 'bar' ? {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Hours'
+                            }
                         }
-                    }
-                };
-            } else if (chartType === 'line') {
-                chartConfig.data.datasets[0] = {
-                    label: 'Hours',
-                    data: sortedTasks.map(([,hours]) => hours),
-                    borderColor: '#764ba2',
-                    backgroundColor: 'rgba(118, 75, 162, 0.1)',
-                    fill: true,
-                    tension: 0.4
-                };
-                chartConfig.options.scales = {
-                    y: { beginAtZero: true }
-                };
-            } else if (chartType === 'radar') {
-                chartConfig.data.datasets[0] = {
-                    label: 'Hours',
-                    data: sortedTasks.map(([,hours]) => hours),
-                    borderColor: '#764ba2',
-                    backgroundColor: 'rgba(118, 75, 162, 0.2)',
-                    pointBackgroundColor: '#764ba2'
-                };
-            }
-
-            charts.task = new Chart(ctx, chartConfig);
+                    } : {}
+                }
+            });
         }
 
         function createSourceChart(chartType) {
@@ -1486,8 +1334,7 @@
             if (sortedSources.length === 0) return;
 
             const ctx = document.getElementById('sourceChart').getContext('2d');
-
-            let chartConfig = {
+            charts.source = new Chart(ctx, {
                 type: chartType,
                 data: {
                     labels: sortedSources.map(([name]) => name),
@@ -1506,43 +1353,18 @@
                         legend: {
                             display: chartType !== 'bar'
                         }
-                    }
-                }
-            };
-
-            if (chartType === 'bar') {
-                chartConfig.options.scales = {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Hours'
+                    },
+                    scales: chartType === 'bar' ? {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Hours'
+                            }
                         }
-                    }
-                };
-            } else if (chartType === 'line') {
-                chartConfig.data.datasets[0] = {
-                    label: 'Hours',
-                    data: sortedSources.map(([,hours]) => hours),
-                    borderColor: '#28a745',
-                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
-                    fill: true,
-                    tension: 0.4
-                };
-                chartConfig.options.scales = {
-                    y: { beginAtZero: true }
-                };
-            } else if (chartType === 'radar') {
-                chartConfig.data.datasets[0] = {
-                    label: 'Hours',
-                    data: sortedSources.map(([,hours]) => hours),
-                    borderColor: '#28a745',
-                    backgroundColor: 'rgba(40, 167, 69, 0.2)',
-                    pointBackgroundColor: '#28a745'
-                };
-            }
-
-            charts.source = new Chart(ctx, chartConfig);
+                    } : {}
+                }
+            });
         }
 
         function createTicketChart(chartType) {
