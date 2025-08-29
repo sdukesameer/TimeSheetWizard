@@ -1700,7 +1700,7 @@
         // Chart type change handler
         document.getElementById('chartType').addEventListener('change', function() {
             if (processedData) {
-                createCharts();
+                filterDataAndRefresh();
             }
         });
 
