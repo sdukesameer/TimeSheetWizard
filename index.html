@@ -15,34 +15,6 @@
             box-sizing: border-box;
         }
 
-        // Process already consolidated reports
-        function processConsolidatedReport(data) {
-            // Expected columns in consolidated reports
-            const expectedColumns = ['Task', 'Ticket ID', 'Ticket Name', 'Story Point', 'Logged Hours', 'Consolidated Comments', 'Employees Involved', 'Ticket Source'];
-
-            // Validate consolidated report format
-            const firstRow = data[0] || {};
-            const hasConsolidatedColumns = expectedColumns.some(col => firstRow.hasOwnProperty(col));
-
-            if (!hasConsolidatedColumns) {
-                throw new Error('File does not appear to be a valid consolidated report');
-            }
-
-            // Clean and validate data
-            return data.filter(row => {
-                return row['Task'] && (row['Logged Hours'] !== null && row['Logged Hours'] !== undefined && row['Logged Hours'] !== '');
-            }).map(row => ({
-                'Task': row['Task'] || '',
-                'Ticket ID': row['Ticket ID'] || '',
-                'Ticket Name': row['Ticket Name'] || '',
-                'Story Point': row['Story Point'] || '',
-                'Logged Hours': parseFloat(row['Logged Hours']) || 0,
-                'Consolidated Comments': row['Consolidated Comments'] || '',
-                'Employees Involved': row['Employees Involved'] || '',
-                'Ticket Source': row['Ticket Source'] || 'Manual Entry'
-            }));
-        }
-
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -71,13 +43,29 @@
             margin-bottom: 30px;
         }
 
-        .config-panel, .controls-panel {
+        .config-panel {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border-radius: 15px;
             padding: 25px;
             margin-bottom: 30px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+
+        .controls-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .controls-panel > * {
+            flex: 1;
         }
 
         .config-section {
@@ -163,6 +151,14 @@
             cursor: pointer;
             transition: all 0.3s ease;
             font-weight: 500;
+            text-align: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .file-input-wrapper {
+            flex: 2;
+            margin: 0;
         }
 
         .file-input-label:hover {
@@ -172,7 +168,7 @@
 
         select, button {
             padding: 12px 20px;
-            margin: 10px;
+            margin: 0; /* Changed from 10px */
             border: none;
             border-radius: 25px;
             font-size: 14px;
@@ -366,6 +362,11 @@
             .config-grid {
                 grid-template-columns: 1fr;
             }
+
+            .controls-panel {
+                grid-template-columns: 1fr !important;
+                gap: 15px !important;
+            }
         }
     </style>
 </head>
@@ -379,18 +380,22 @@
 
         <!-- File Upload Panel -->
         <div class="controls-panel">
-            <div class="file-input-wrapper">
+            <div class="file-input-wrapper" style="margin: 0;">
                 <input type="file" id="fileInput" accept=".csv,.xlsx">
                 <label for="fileInput" class="file-input-label">📁 Choose Timesheet File (.csv or .xlsx)</label>
             </div>
 
-            <select id="chartType">
+            <select id="chartType" class="hidden" style="width: 100%; text-align: center;">
                 <option value="bar">📊 Bar Charts</option>
-                <option value="pie">🥧 Pie Charts</option>
                 <option value="doughnut">🍩 Doughnut Charts</option>
+                <option value="line">📈 Line Charts</option>
             </select>
 
-            <button id="processButton" onclick="processTimesheet()">🚀 Process & Visualize</button>
+            <select id="resourceFilter" class="hidden" style="width: 100%; text-align: center;">
+                <option value="all">👥 All Employees</option>
+            </select>
+
+            <button id="processButton" onclick="processTimesheet()" style="margin: 0; width: 100%; text-align: center;">🚀 Process & Visualize</button>
         </div>
 
         <!-- Processing Panel -->
@@ -469,12 +474,6 @@
         let processedData = null;
         let charts = {};
 
-        // Configuration management
-        // function toggleConfig() {
-        //     const configSection = document.getElementById('configSection');
-        //     configSection.classList.toggle('hidden');
-        // }
-
         // Utility functions
         function showError(message) {
             const errorDiv = document.getElementById('errorMessage');
@@ -509,6 +508,85 @@
 
         function hideProcessing() {
             document.getElementById('processingPanel').style.display = 'none';
+        }
+
+        // Add after hideProcessing() calls in processTimesheet function
+        function showControlsAfterProcessing() {
+            document.getElementById('resourceFilter').classList.remove('hidden');
+            document.getElementById('chartType').classList.remove('hidden');
+            populateResourceFilter();
+        }
+
+        function populateResourceFilter() {
+            const resourceFilter = document.getElementById('resourceFilter');
+            const uniqueEmployees = new Set();
+
+            processedData.forEach(row => {
+                if (row['Employees Involved']) {
+                    const employees = row['Employees Involved'].split(',');
+                    employees.forEach(emp => {
+                        const employee = emp.trim();
+                        if (employee) uniqueEmployees.add(employee);
+                    });
+                }
+            });
+
+            // Clear existing options except "All Employees"
+            resourceFilter.innerHTML = '<option value="all">👥 All Employees</option>';
+
+            // Add employee options
+            Array.from(uniqueEmployees).sort().forEach(employee => {
+                const option = document.createElement('option');
+                option.value = employee;
+                option.textContent = `👤 ${employee}`;
+                resourceFilter.appendChild(option);
+            });
+        }
+
+        // Add event listener for resource filter
+        document.getElementById('resourceFilter').addEventListener('change', function() {
+            if (processedData) {
+                filterDataAndRefresh();
+            }
+        });
+
+        function filterDataAndRefresh() {
+            const selectedResource = document.getElementById('resourceFilter').value;
+
+            let filteredData = processedData;
+
+            if (selectedResource !== 'all') {
+                filteredData = [];
+
+                processedData.forEach(row => {
+                    const employeeHours = row['Employee Hours'] || {};
+                    const individualHours = employeeHours[selectedResource];
+
+                    if (individualHours && individualHours > 0) {
+                        // Create a new row with only the selected employee's data
+                        const newEmployeeHours = {};
+                        newEmployeeHours[selectedResource] = individualHours;
+
+                        filteredData.push({
+                            ...row,
+                            'Logged Hours': Math.round(individualHours * 100) / 100,
+                            'Employees Involved': selectedResource,
+                            'Employee Hours': newEmployeeHours  // Only selected employee's hours
+                        });
+                    }
+                });
+            }
+
+            // Temporarily replace processedData for visualization
+            const originalData = processedData;
+            processedData = filteredData;
+
+            updateStatistics();
+            createCharts();
+            createDataTable();
+
+            // Restore original data
+            processedData = originalData;
         }
 
         // File handling
@@ -567,6 +645,7 @@
                     setTimeout(() => {
                         hideProcessing();
                         showSuccess(`Loaded consolidated report with ${processedData.length} entries!`);
+                        showControlsAfterProcessing(); // Add this line
                         document.getElementById('downloadSection').classList.add('hidden');
                         document.getElementById('statsPanel').classList.remove('hidden');
                         document.getElementById('chartsContainer').classList.remove('hidden');
@@ -597,6 +676,7 @@
                     setTimeout(() => {
                         hideProcessing();
                         showSuccess(`Successfully processed ${rawData.length} records into ${processedData.length} consolidated entries!`);
+                        showControlsAfterProcessing(); // Add this line
                         document.getElementById('downloadSection').classList.remove('hidden');
                         document.getElementById('statsPanel').classList.remove('hidden');
                         document.getElementById('chartsContainer').classList.remove('hidden');
@@ -1063,6 +1143,10 @@
                     group.totalHours += hours;
                     group.comments.add(comments);
                     group.employees.add(employee);
+                    if (!group.employeeHours) {
+                        group.employeeHours = {};
+                    }
+                    group.employeeHours[employee] = (group.employeeHours[employee] || 0) + hours;
                 } else {
                     // Distribute hours equally among found tickets
                     const hoursPerTicket = hours / allTickets.length;
@@ -1089,9 +1173,13 @@
                         }
 
                         const group = consolidationGroups[key];
-                        group.totalHours += hoursPerTicket;
+                        group.totalHours += hours;
                         group.comments.add(comments);
                         group.employees.add(employee);
+                        if (!group.employeeHours) {
+                            group.employeeHours = {};
+                        }
+                        group.employeeHours[employee] = (group.employeeHours[employee] || 0) + hours;
                     });
 
                     // Process Atlassian tickets
@@ -1113,9 +1201,13 @@
                         }
 
                         const group = consolidationGroups[key];
-                        group.totalHours += hoursPerTicket;
+                        group.totalHours += hours;
                         group.comments.add(comments);
                         group.employees.add(employee);
+                        if (!group.employeeHours) {
+                            group.employeeHours = {};
+                        }
+                        group.employeeHours[employee] = (group.employeeHours[employee] || 0) + hours;
                     });
                 }
             });
@@ -1135,7 +1227,8 @@
                     'Logged Hours': Math.round(group.totalHours * 100) / 100,
                     'Consolidated Comments': uniqueComments.join('\n'),
                     'Employees Involved': Array.from(group.employees).sort().join(', '),
-                    'Ticket Source': group.ticketSource
+                    'Ticket Source': group.ticketSource,
+                    'Employee Hours': group.employeeHours || {} // Add this line
                 };
             });
 
@@ -1219,16 +1312,28 @@
         function createEmployeeChart(chartType) {
             const employeeHours = {};
 
+            // Add fallback logic
             processedData.forEach(row => {
-                const hours = row['Logged Hours'] || 0;
-                const employees = row['Employees Involved'] || '';
+                const employeeHoursData = row['Employee Hours'] || {};
 
-                employees.split(',').forEach(emp => {
-                    const employee = emp.trim();
-                    if (employee) {
-                        employeeHours[employee] = (employeeHours[employee] || 0) + hours;
-                    }
-                });
+                // If no Employee Hours data, parse from 'Employees Involved'
+                if (Object.keys(employeeHoursData).length === 0 && row['Employees Involved']) {
+                    const employees = row['Employees Involved'].split(',');
+                    const hoursPerEmployee = (row['Logged Hours'] || 0) / employees.length;
+                    employees.forEach(emp => {
+                        const employee = emp.trim();
+                        if (employee) {
+                            employeeHours[employee] = (employeeHours[employee] || 0) + hoursPerEmployee;
+                        }
+                    });
+                } else {
+                    // Use existing Employee Hours data
+                    Object.entries(employeeHoursData).forEach(([employee, hours]) => {
+                        if (employee && hours > 0) {
+                            employeeHours[employee] = (employeeHours[employee] || 0) + hours;
+                        }
+                    });
+                }
             });
 
             const sortedEmployees = Object.entries(employeeHours)
@@ -1238,7 +1343,8 @@
             if (sortedEmployees.length === 0) return;
 
             const ctx = document.getElementById('employeeChart').getContext('2d');
-            charts.employee = new Chart(ctx, {
+
+            let chartConfig = {
                 type: chartType,
                 data: {
                     labels: sortedEmployees.map(([name]) => name),
@@ -1257,19 +1363,37 @@
                         legend: {
                             display: chartType !== 'bar'
                         }
-                    },
-                    scales: chartType === 'bar' ? {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Hours'
-                            }
-                        }
-                    } : {}
+                    }
                 }
-            });
+            };
+
+            if (chartType === 'bar') {
+                chartConfig.options.scales = {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Hours'
+                        }
+                    }
+                };
+            } else if (chartType === 'line') {
+                chartConfig.data.datasets[0] = {
+                    label: 'Hours',
+                    data: sortedEmployees.map(([,hours]) => hours),
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                };
+                chartConfig.options.scales = {
+                    y: { beginAtZero: true }
+                };
+            }
+
+            charts.employee = new Chart(ctx, chartConfig);
         }
+
 
         function createTaskChart(chartType) {
             const taskHours = {};
@@ -1286,7 +1410,8 @@
             if (sortedTasks.length === 0) return;
 
             const ctx = document.getElementById('taskChart').getContext('2d');
-            charts.task = new Chart(ctx, {
+
+            let chartConfig = {
                 type: chartType,
                 data: {
                     labels: sortedTasks.map(([name]) => name),
@@ -1305,18 +1430,35 @@
                         legend: {
                             display: chartType !== 'bar'
                         }
-                    },
-                    scales: chartType === 'bar' ? {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Hours'
-                            }
-                        }
-                    } : {}
+                    }
                 }
-            });
+            };
+
+            if (chartType === 'bar') {
+                chartConfig.options.scales = {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Hours'
+                        }
+                    }
+                };
+            } else if (chartType === 'line') {
+                chartConfig.data.datasets[0] = {
+                    label: 'Hours',
+                    data: sortedTasks.map(([,hours]) => hours),
+                    borderColor: '#764ba2',
+                    backgroundColor: 'rgba(118, 75, 162, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                };
+                chartConfig.options.scales = {
+                    y: { beginAtZero: true }
+                };
+            }
+
+            charts.task = new Chart(ctx, chartConfig);
         }
 
         function createSourceChart(chartType) {
@@ -1334,7 +1476,8 @@
             if (sortedSources.length === 0) return;
 
             const ctx = document.getElementById('sourceChart').getContext('2d');
-            charts.source = new Chart(ctx, {
+
+            let chartConfig = {
                 type: chartType,
                 data: {
                     labels: sortedSources.map(([name]) => name),
@@ -1353,18 +1496,35 @@
                         legend: {
                             display: chartType !== 'bar'
                         }
-                    },
-                    scales: chartType === 'bar' ? {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Hours'
-                            }
-                        }
-                    } : {}
+                    }
                 }
-            });
+            };
+
+            if (chartType === 'bar') {
+                chartConfig.options.scales = {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Hours'
+                        }
+                    }
+                };
+            } else if (chartType === 'line') {
+                chartConfig.data.datasets[0] = {
+                    label: 'Hours',
+                    data: sortedSources.map(([,hours]) => hours),
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                };
+                chartConfig.options.scales = {
+                    y: { beginAtZero: true }
+                };
+            }
+
+            charts.source = new Chart(ctx, chartConfig);
         }
 
         function createTicketChart(chartType) {
